@@ -1,0 +1,16 @@
+# Binaries
+pacer-mcp
+*.exe
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env

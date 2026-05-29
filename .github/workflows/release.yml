@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get release info
+        id: release
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download checksums
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          curl -sL "$BASE_URL/checksums.txt" -o checksums.txt
+
+      - name: Update Homebrew tap
+        env:
+          TAP_TOKEN: ${{ secrets.CLICKUP_TAP_TOKEN }}
+        run: |
+          TAG=${{ steps.release.outputs.tag }}
+          VERSION=${{ steps.release.outputs.version }}
+          ARM64_SHA=$(grep "pacer-mcp_${VERSION}_darwin_arm64.tar.gz" checksums.txt | awk '{print $1}')
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG"
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/STR-Consulting/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+
+          cat > tap/Formula/pacer-mcp.rb << FORMULA
+          class PacerMcp < Formula
+            desc "MCP server exposing pacer/core API endpoints as Claude Code tools"
+            homepage "https://github.com/${{ github.repository }}"
+            version "$VERSION"
+            license "MIT"
+
+            on_arm do
+              url "$BASE_URL/pacer-mcp_${VERSION}_darwin_arm64.tar.gz"
+              sha256 "$ARM64_SHA"
+            end
+
+            def install
+              bin.install "pacer-mcp" => "pacer-mcp"
+            end
+          end
+          FORMULA
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "Update pacer-mcp to $TAG"
+          git push
+
+  update-scoop:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get release info
+        id: release
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download checksums
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          curl -sL "$BASE_URL/checksums.txt" -o checksums.txt
+
+      - name: Update Scoop bucket
+        env:
+          TAP_TOKEN: ${{ secrets.CLICKUP_TAP_TOKEN }}
+        run: |
+          TAG=${{ steps.release.outputs.tag }}
+          VERSION=${{ steps.release.outputs.version }}
+          WIN_SHA=$(grep "pacer-mcp_${VERSION}_windows_amd64.zip" checksums.txt | awk '{print $1}')
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG"
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/STR-Consulting/scoop-bucket.git" bucket
+
+          cat > bucket/pacer-mcp.json << MANIFEST
+          {
+            "version": "$VERSION",
+            "architecture": {
+              "64bit": {
+                "url": "$BASE_URL/pacer-mcp_${VERSION}_windows_amd64.zip",
+                "hash": "$WIN_SHA"
+              }
+            },
+            "bin": "pacer-mcp.exe"
+          }
+          MANIFEST
+
+          cd bucket
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pacer-mcp.json
+          git diff --cached --quiet || git commit -m "bump pacer-mcp to ${VERSION}"
+          git push

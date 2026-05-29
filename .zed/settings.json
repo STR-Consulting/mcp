@@ -1,0 +1,22 @@
+{
+	"lsp": {
+		"gopls": {
+			"initialization_options": {
+				"usePlaceholders": true,
+				"buildFlags": ["-tags=integration"],
+				"completeUnimported": true,
+				"experimentalPostfixCompletions": true,
+				"templateExtensions": ["gohtml"],
+				"hints": {
+					"assignVariableTypes": false,
+					"compositeLiteralFields": false,
+					"compositeLiteralTypes": false,
+					"constantValues": true,
+					"functionTypeParameters": true,
+					"parameterNames": true,
+					"rangeVariableTypes": true
+				}
+			}
+		}
+	}
+}

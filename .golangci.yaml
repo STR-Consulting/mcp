@@ -1,0 +1,68 @@
+# https://golangci-lint.run/docs/configuration/file/
+version: "2"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    golines:
+      max-len: 90
+      shorten-comments: true
+
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - unconvert
+    - unparam
+    - whitespace
+    - gocheckcompilerdirectives
+    - godoclint
+    - gosec
+    - importas
+    - perfsprint
+    - usestdlibvars
+  disable:
+    - goconst
+    - modernize
+    - intrange
+
+  settings:
+    gosec:
+      excludes:
+        - G115
+        - G117
+        - G704
+        - G705
+        - G706
+
+    gocritic:
+      enabled-checks:
+        - sqlQuery
+        - boolExprSimplify
+        - deferUnlambda
+        - emptyFallthrough
+        - emptyStringTest
+        - nestingReduce
+        - paramTypeCombine
+        - ptrToRefParam
+        - stringConcatSimplify
+        - typeUnparen
+        - appendCombine
+        - preferFprint
+        - preferStringWriter
+        - rangeExprCopy
+        - sliceClear
+      disabled-checks:
+        - ifElseChain
+        - exitAfterDefer
+
+  exclusions:
+    paths:
+      - ".*\\.my\\.go$"
+      - ".*\\.sql\\.go$"
+      - "^\\.claude/"

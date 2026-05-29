@@ -1,0 +1,5 @@
+{
+	"mcpServers": {
+		"pacer": { "command": "pacer-mcp" }
+	}
+}
