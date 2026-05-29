@@ -1,32 +1,98 @@
 # pacer-mcp
 
-MCP server in Go that exposes pacer/core API endpoints as native Claude Code tools over stdio.
+MCP server in Go that exposes [pacer/core](../core) API endpoints as native Claude Code tools over stdio.
 
 ## Project Info
 
-- **Language:** Go
-- **Binary:** `pacer-mcp` (MCP server, stdio transport)
+- **Language:** Go (single `main.go`, stdio transport)
+- **Binary:** `pacer-mcp`
 - **Repo:** github.com/STR-Consulting/pacer-mcp
-- **Core API:** sibling `../core` repo (github.com/pacer/core)
+- **Upstream API:** sibling `../core` repo — github.com/pacer/core, `mc` app
+
+## Tight coupling with `pacer/core`
+
+**This repo is a thin client around `core`. It has no business logic and no data of its own — every tool is a wrapper over an HTTP endpoint defined in `pacer/core/internal/web/api/`.**
+
+That means:
+
+- **Every new MCP tool needs a matching endpoint in `core`.** If a user asks
+  for a tool and the endpoint doesn't exist yet, the work is *primarily* a
+  `core` change. The MCP-side wrapper is the easy half.
+- **Coordinate via a jig issue in `core`, not here.** When a tool request
+  requires API work, the canonical tracking issue lives in `../core/.issues/`
+  (synced to the same ClickUp list as this repo — list `901112937048`). Create
+  the `core` issue first describing the endpoint contract (route, method,
+  request/response shape, auth), then a follow-up issue here in
+  `.issues/` referencing it for the MCP wrapper.
+- **Don't fork response shapes.** Read the handler in
+  `core/internal/web/api/<feature>.go` and reuse its DTO field names verbatim
+  in the Go types here. If you find yourself reshaping data, that's a sign the
+  endpoint itself needs adjustment — push the change into `core`.
+- **Don't add request validation, retries, or business rules here that
+  belong in `core`.** This binary should be boring: marshal args, hit the
+  endpoint, return the JSON. Validation and authorization live behind the PAT
+  middleware on the server side.
+
+### Workflow for "add tool X" requests
+
+1. Check `../core/internal/web/api/routes.go` — does an endpoint already cover it?
+2. **If no:** create a jig issue in `../core/.issues/` (`cd ../core && jig todo create ...`) describing the desired endpoint. *Stop here* on the MCP side until the API is shipped — there's nothing useful to wrap yet.
+3. **If yes:** create a jig issue here in `.issues/` for the MCP wrapper, implement the tool, and ship.
+4. When both sides ship together, mention the linked issue ID in both commit messages so the ClickUp sync threads them.
+
+### Version compatibility
+
+There is no version negotiation. `pacer-mcp` assumes the `mc` app at
+`PACER_CORE_URL` exposes the endpoints it calls. If `core` removes or changes
+a route, the corresponding MCP tool will break — fix it by bumping this repo
+in lockstep. Don't add compatibility shims; just keep both sides current.
 
 ## Architecture
 
-Single Go binary, runs as MCP server via stdio. Claude Code launches it as a child process.
+Single Go binary, runs as MCP server via stdio. Claude Code (or any MCP client) launches it as a child process. All state lives upstream in `core` / Postgres — this binary holds nothing across calls except an `http.Client`.
 
 ### MCP Tools
 
 | Tool | Description |
 |------|-------------|
-| `health_check` | Verify connectivity to pacer/core and report config status |
+| `health_check` | Pings the PAT-gated `/api/v1/portfolios/briefable` endpoint to verify URL + token config |
 
-More tools will be added as the core API surface stabilizes.
+More tools will be added as the `core` API surface stabilizes — see the workflow above.
 
 ### Configuration
 
 | Env var | Description | Default |
 |---------|-------------|---------|
-| `PACER_CORE_URL` | Base URL of the pacer/core API | `https://api.pacer.run` |
-| `PACER_CORE_TOKEN` | Bearer token for authenticated endpoints | (unset) |
+| `PACER_CORE_URL` | Base URL of the `pacer/core` `mc` app | `https://mc.pacerrev.io` |
+| `PACER_CORE_TOKEN` | Personal access token, format `pat_...` | (unset) |
+
+### Pacer Core API (PAT-gated)
+
+The MCP server talks to the JSON API exposed by `pacer/core`'s `mc` app under
+`/api/v1`, authenticated with a personal access token in
+`Authorization: Bearer pat_...`. PATs are issued via the core CLI
+(`pacer pat create --user <email> --label <name>`) and require the user to
+have at least the `employee` role.
+
+Canonical route list: `pacer/core/internal/web/api/routes.go`. As of writing:
+
+- `GET /api/v1/portfolios/briefable`
+- `GET /api/v1/portfolios/teams`
+- `GET /api/v1/portfolios/{portfolio}/team`
+- `GET /api/v1/portfolios/{portfolio}/units`
+- `GET /api/v1/portfolios/{portfolio}/reservations`
+- `GET /api/v1/portfolios/{portfolio}/pacing`
+- `GET /api/v1/portfolios/{portfolio}/metrics/ytd`
+- `GET /api/v1/portfolios/{portfolio}/market-metrics`
+- `GET /api/v1/portfolios/{portfolio}/client-health-brief`
+- `POST /api/v1/portfolios/{portfolio}/client-health-brief`
+- `GET /api/v1/client-health/briefs`
+- `GET /api/v1/client-health/scoring-config`
+- `POST /api/v1/portfolios/{portfolio}/intel-brief`
+- `POST /api/v1/portfolios/{portfolio}/intel-brief/attachments`
+- `GET /api/v1/keydata/managed-units`
+
+Always re-read `routes.go` before adding a tool — this list rots.
 
 ### MCP config (end-user)
 
@@ -36,8 +102,8 @@ More tools will be added as the core API surface stabilizes.
     "pacer": {
       "command": "pacer-mcp",
       "env": {
-        "PACER_CORE_URL": "https://api.pacer.run",
-        "PACER_CORE_TOKEN": "..."
+        "PACER_CORE_URL": "https://mc.pacerrev.io",
+        "PACER_CORE_TOKEN": "pat_..."
       }
     }
   }
@@ -46,11 +112,13 @@ More tools will be added as the core API surface stabilizes.
 
 ## Dev Guidelines
 
-- Keep it simple — single `main.go` or minimal packages
+- Keep it simple — single `main.go` or minimal packages; this is a thin HTTP client
 - Stdlib + the MCP SDK; avoid extra deps
 - Cross-platform: must build for darwin-arm64, windows-amd64
 - Always run `golangci-lint run --fix ./...` after modifying Go code
 - Always run `shellcheck` after modifying shell scripts
+- Mirror DTO field names from `core/internal/web/api/` exactly — no rename layer
+- No client-side caching, no retries beyond what `http.Client` does by default
 
 ## Build & Test
 
@@ -69,3 +137,7 @@ GOOS=windows GOARCH=amd64 go build -o dist/pacer-mcp-windows-amd64.exe .
 ## Release
 
 Push a `v*` tag — GitHub Actions builds darwin-arm64 and windows-amd64 binaries via goreleaser, then updates the [Homebrew tap](https://github.com/STR-Consulting/homebrew-tap) and [Scoop bucket](https://github.com/STR-Consulting/scoop-bucket).
+
+## Issue tracking
+
+Both `pacer-mcp` and `pacer/core` sync to ClickUp list `901112937048`. When a tool request straddles both repos, file the API issue in `../core/.issues/` and the wrapper issue in `./.issues/`, and cross-reference both jig IDs in the issue bodies so the ClickUp thread connects them.

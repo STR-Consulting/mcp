@@ -33,8 +33,8 @@ Add to your MCP config (e.g. `.mcp.json` in your project or your Claude Code use
     "pacer": {
       "command": "pacer-mcp",
       "env": {
-        "PACER_CORE_URL": "https://api.pacer.run",
-        "PACER_CORE_TOKEN": "..."
+        "PACER_CORE_URL": "https://mc.pacerrev.io",
+        "PACER_CORE_TOKEN": "pat_..."
       }
     }
   }
@@ -43,10 +43,12 @@ Add to your MCP config (e.g. `.mcp.json` in your project or your Claude Code use
 
 | Env var | Description | Default |
 |---------|-------------|---------|
-| `PACER_CORE_URL` | Base URL of the pacer/core API | `https://api.pacer.run` |
-| `PACER_CORE_TOKEN` | Bearer token for authenticated endpoints | (unset) |
+| `PACER_CORE_URL` | Base URL of the pacer/core `mc` app | `https://mc.pacerrev.io` |
+| `PACER_CORE_TOKEN` | Personal access token, format `pat_...` | (unset) |
 
 Run `health_check` after install to confirm the server can reach core.
+
+PATs are minted by a core admin via `pacer pat create --user <email> --label <name>`; they require an `employee`-or-higher role and are sent as `Authorization: Bearer pat_...`.
 
 ## Tools
 

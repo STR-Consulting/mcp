@@ -14,11 +14,13 @@ import (
 )
 
 const (
-	version          = "0.0.1"
-	defaultCoreURL   = "https://api.pacer.run"
-	coreURLEnvVar    = "PACER_CORE_URL"
-	coreTokenEnvVar  = "PACER_CORE_TOKEN"
-	httpTimeout      = 30 * time.Second
+	version         = "0.0.1"
+	defaultCoreURL  = "https://mc.pacerrev.io"
+	coreURLEnvVar   = "PACER_CORE_URL"
+	coreTokenEnvVar = "PACER_CORE_TOKEN"
+	httpTimeout     = 30 * time.Second
+	// Lightweight PAT-auth-protected endpoint used to verify connectivity.
+	healthProbePath = "/api/v1/portfolios/briefable"
 )
 
 type server struct {
@@ -61,7 +63,7 @@ func (s *server) healthCheck(
 		ServerVer: version,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.coreURL+"/health", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.coreURL+healthProbePath, nil)
 	if err != nil {
 		result.Error = err.Error()
 		return nil, result, nil
