@@ -2,12 +2,20 @@
 
 MCP server in Go that exposes [pacer/core](../core) API endpoints as native Claude Code tools over stdio.
 
+> **⚠️ This repo is PUBLIC.** Do not commit customer names, employee names,
+> portfolio identifiers, real reservation/unit IDs, PATs, internal hostnames
+> beyond `mc.pacerrev.io`, or any data pulled from a live `core` instance.
+> Issue bodies, commit messages, code comments, and test fixtures are all
+> world-readable. When pasting examples from probes or jig threads, scrub
+> proper nouns first. The upstream `pacer/core` repo is private and is where
+> sensitive context belongs.
+
 ## Project Info
 
 - **Language:** Go (single `main.go`, stdio transport)
 - **Binary:** `pacer-mcp`
-- **Repo:** github.com/STR-Consulting/pacer-mcp
-- **Upstream API:** sibling `../core` repo — github.com/pacer/core, `mc` app
+- **Repo:** github.com/STR-Consulting/mcp (public)
+- **Upstream API:** sibling `../core` repo — github.com/pacer/core (private), `mc` app
 
 ## Tight coupling with `pacer/core`
 
