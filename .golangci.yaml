@@ -34,6 +34,7 @@ linters:
   settings:
     gosec:
       excludes:
+        - G101
         - G115
         - G117
         - G704

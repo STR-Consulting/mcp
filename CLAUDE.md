@@ -56,6 +56,8 @@ Single Go binary, runs as MCP server via stdio. Claude Code (or any MCP client) 
 | Tool | Description |
 |------|-------------|
 | `health_check` | Pings the PAT-gated `/api/v1/portfolios/briefable` endpoint to verify URL + token config |
+| `guesty_pricing_config` | Per-unit PMS pricing config for a portfolio (base price, fees, min/max nights, channel settings, attached promotion IDs, last-synced timestamp) |
+| `guesty_reservation_promotions` | Channel-applied promotions (Airbnb, Vrbo, etc.) for a portfolio's reservations in a given month; `flat=true` returns aggregated per-reservation rows |
 
 More tools will be added as the `core` API surface stabilizes — see the workflow above.
 
@@ -84,6 +86,8 @@ Canonical route list: `pacer/core/internal/web/api/routes.go`. As of writing:
 - `GET /api/v1/portfolios/{portfolio}/pacing`
 - `GET /api/v1/portfolios/{portfolio}/metrics/ytd`
 - `GET /api/v1/portfolios/{portfolio}/market-metrics`
+- `GET /api/v1/portfolios/{portfolio}/pricing-config`
+- `GET /api/v1/portfolios/{portfolio}/reservation-promotions`
 - `GET /api/v1/portfolios/{portfolio}/client-health-brief`
 - `POST /api/v1/portfolios/{portfolio}/client-health-brief`
 - `GET /api/v1/client-health/briefs`
