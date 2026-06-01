@@ -1,5 +1,7 @@
 version: 2
 
+project_name: pacer-mcp
+
 builds:
   - binary: pacer-mcp
     goos:
