@@ -39,10 +39,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG"
-          curl -sL "$BASE_URL/checksums.txt" -o checksums.txt
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern checksums.txt
 
       - name: Update Homebrew tap
         env:
@@ -51,6 +54,11 @@ jobs:
           TAG=${{ steps.release.outputs.tag }}
           VERSION=${{ steps.release.outputs.version }}
           ARM64_SHA=$(grep "pacer-mcp_${VERSION}_darwin_arm64.tar.gz" checksums.txt | awk '{print $1}')
+          if [ -z "$ARM64_SHA" ]; then
+            echo "::error::could not find darwin_arm64 sha in checksums.txt"
+            cat checksums.txt
+            exit 1
+          fi
           BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG"
 
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/STR-Consulting/homebrew-tap.git" tap
@@ -94,10 +102,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG"
-          curl -sL "$BASE_URL/checksums.txt" -o checksums.txt
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern checksums.txt
 
       - name: Update Scoop bucket
         env:
@@ -106,6 +117,11 @@ jobs:
           TAG=${{ steps.release.outputs.tag }}
           VERSION=${{ steps.release.outputs.version }}
           WIN_SHA=$(grep "pacer-mcp_${VERSION}_windows_amd64.zip" checksums.txt | awk '{print $1}')
+          if [ -z "$WIN_SHA" ]; then
+            echo "::error::could not find windows_amd64 sha in checksums.txt"
+            cat checksums.txt
+            exit 1
+          fi
           BASE_URL="https://github.com/${{ github.repository }}/releases/download/$TAG"
 
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/STR-Consulting/scoop-bucket.git" bucket
