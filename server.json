@@ -10,8 +10,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/str-consulting/pacer-mcp",
-      "version": "0.0.0",
+      "identifier": "ghcr.io/str-consulting/pacer-mcp:0.0.0",
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
