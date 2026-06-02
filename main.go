@@ -229,7 +229,7 @@ func (s *server) listBriefablePortfolios(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args listBriefablePortfoliosArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	q := url.Values{}
 	if args.Q != "" {
 		q.Set("q", args.Q)
@@ -249,7 +249,7 @@ func (s *server) listPortfolioTeams(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	_ listPortfolioTeamsArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	body, err := s.doGET(ctx, "/api/v1/portfolios/teams", nil)
 	if err != nil {
 		return nil, nil, err
@@ -267,7 +267,7 @@ func (s *server) getPortfolioTeam(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args getPortfolioTeamArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -288,7 +288,7 @@ func (s *server) listPortfolioUnits(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args listPortfolioUnitsArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -312,7 +312,7 @@ func (s *server) listPortfolioReservations(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args listPortfolioReservationsArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -344,7 +344,7 @@ func (s *server) getPortfolioPacing(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args getPortfolioPacingArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -373,7 +373,7 @@ func (s *server) getPortfolioMetricsYTD(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args getPortfolioMetricsYTDArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -400,7 +400,7 @@ func (s *server) getPortfolioMarketMetrics(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args getPortfolioMarketMetricsArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -429,7 +429,7 @@ func (s *server) guestyPricingConfig(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args guestyPricingConfigArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -452,7 +452,7 @@ func (s *server) guestyReservationPromotions(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args guestyReservationPromotionsArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -482,7 +482,7 @@ func (s *server) getClientHealthBrief(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args getClientHealthBriefArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -518,7 +518,7 @@ func (s *server) upsertClientHealthBrief(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args upsertClientHealthBriefArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -553,7 +553,7 @@ func (s *server) listClientHealthBriefs(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args listClientHealthBriefsArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	q := url.Values{}
 	if args.AsOf != "" {
 		q.Set("as_of", args.AsOf)
@@ -573,7 +573,7 @@ func (s *server) getClientHealthScoringConfig(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	_ getClientHealthScoringConfigArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	body, err := s.doGET(ctx, "/api/v1/client-health/scoring-config", nil)
 	if err != nil {
 		return nil, nil, err
@@ -611,7 +611,7 @@ func (s *server) upsertIntelBrief(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args upsertIntelBriefArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
 		return nil, nil, errors.New("portfolio is required")
 	}
@@ -651,7 +651,7 @@ func (s *server) listManagedKeydataUnits(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	args listManagedKeydataUnitsArgs,
-) (*mcp.CallToolResult, json.RawMessage, error) {
+) (*mcp.CallToolResult, any, error) {
 	if args.KDCustomer == "" {
 		return nil, nil, errors.New("kd_customer is required (KeyData account UUID)")
 	}
@@ -675,6 +675,16 @@ func main() {
 	impl := &mcp.Implementation{Name: "pacer-mcp", Version: version}
 	srv := mcp.NewServer(impl, &mcp.ServerOptions{Instructions: serverInstructions})
 
+	registerTools(srv, s)
+
+	if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		log.Fatalf("server error: %v", err)
+	}
+}
+
+// registerTools wires every MCP tool against the server. Extracted from main
+// so tests can drive it without a stdio transport.
+func registerTools(srv *mcp.Server, s *server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "health_check",
 		Description: "Check connectivity to the Pacer API and report config status. " +
@@ -887,8 +897,4 @@ func main() {
 			"the KeyData UI; rarely needed in a chat session.\n\n" +
 			"ARG: kd_customer = KeyData customer account UUID.",
 	}, s.listManagedKeydataUnits)
-
-	if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-		log.Fatalf("server error: %v", err)
-	}
 }

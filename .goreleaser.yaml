@@ -4,9 +4,12 @@ project_name: pacer-mcp
 
 builds:
   - binary: pacer-mcp
+    env:
+      - CGO_ENABLED=0
     goos:
       - darwin
       - windows
+      - linux
     goarch:
       - arm64
       - amd64
@@ -21,10 +24,28 @@ archives:
       - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 
 checksum:
   name_template: checksums.txt
+
+dockers_v2:
+  - id: pacer-mcp
+    dockerfile: Dockerfile
+    images:
+      - ghcr.io/str-consulting/pacer-mcp
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      "org.opencontainers.image.title": "pacer-mcp"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.source": "{{ .GitURL }}"
+      "org.opencontainers.image.licenses": "MIT"
 
 release:
   draft: false
