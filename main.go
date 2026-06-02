@@ -21,7 +21,7 @@ import (
 
 const (
 	version         = "0.0.1"
-	defaultCoreURL  = "https://mc.pacerrev.io"
+	defaultCoreURL  = "https://portal.pacerrev.io"
 	coreURLEnvVar   = "PACER_CORE_URL"
 	coreTokenEnvVar = "PACER_CORE_TOKEN"
 	httpTimeout     = 30 * time.Second
@@ -30,7 +30,7 @@ const (
 )
 
 const serverInstructions = `pacer-mcp exposes the Pacer revenue-management platform's API
-(` + "`mc.pacerrev.io`" + `) as a set of tools. End users are short-term-rental
+(` + "`portal.pacerrev.io`" + `) as a set of tools. End users are short-term-rental
 revenue managers driving these tools via an AI assistant; they are fluent in
 STR concepts (ADR, RevPAR, occupancy, pacing, ABW, LOS, same-store, channel
 mix) but rarely read JSON. Translate results into RM-friendly language.
@@ -136,6 +136,9 @@ func (s *server) doGET(ctx context.Context, path string, query url.Values) (json
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("core API %d: %s", resp.StatusCode, string(body))
 	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, fmt.Errorf("core API returned %d with empty body — backend may be down or %s may be pointed at the wrong host (expected portal.pacerrev.io)", resp.StatusCode, s.coreURL)
+	}
 	return json.RawMessage(body), nil
 }
 
@@ -166,6 +169,9 @@ func (s *server) doPOSTJSON(ctx context.Context, path string, body any) (json.Ra
 	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("core API %d: %s", resp.StatusCode, string(respBody))
+	}
+	if len(bytes.TrimSpace(respBody)) == 0 {
+		return nil, fmt.Errorf("core API returned %d with empty body — backend may be down or %s may be pointed at the wrong host (expected portal.pacerrev.io)", resp.StatusCode, s.coreURL)
 	}
 	return json.RawMessage(respBody), nil
 }

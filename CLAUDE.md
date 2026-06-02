@@ -4,7 +4,7 @@ MCP server in Go that exposes [pacer/core](../core) API endpoints as native Clau
 
 > **⚠️ This repo is PUBLIC.** Do not commit customer names, employee names,
 > portfolio identifiers, real reservation/unit IDs, PATs, internal hostnames
-> beyond `mc.pacerrev.io`, or any data pulled from a live `core` instance.
+> beyond `portal.pacerrev.io`, or any data pulled from a live `core` instance.
 > Commit messages, code comments, and test fixtures are all world-readable.
 > When pasting examples from probes or jig threads, scrub proper nouns first.
 > The upstream `pacer/core` repo is private and is where sensitive context
@@ -78,7 +78,7 @@ More tools will be added as the `core` API surface stabilizes — see the workfl
 
 | Env var | Description | Default |
 |---------|-------------|---------|
-| `PACER_CORE_URL` | Base URL of the `pacer/core` `mc` app | `https://mc.pacerrev.io` |
+| `PACER_CORE_URL` | Base URL of the `pacer/core` app (the PAT JSON API is mounted on the main `core-prod` Cloud Run service, served at `portal.pacerrev.io`; **not** the Mission Control UI at `mc2.pacerrev.io`, and **not** the legacy Django app at `mc.pacerrev.io`) | `https://portal.pacerrev.io` |
 | `PACER_CORE_TOKEN` | Personal access token, format `pat_...` | (unset) |
 
 ### Pacer Core API (PAT-gated)
@@ -119,7 +119,7 @@ Always re-read `routes.go` before adding a tool — this list rots.
     "pacer": {
       "command": "pacer-mcp",
       "env": {
-        "PACER_CORE_URL": "https://mc.pacerrev.io",
+        "PACER_CORE_URL": "https://portal.pacerrev.io",
         "PACER_CORE_TOKEN": "pat_..."
       }
     }
