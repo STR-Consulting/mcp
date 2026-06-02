@@ -1,3 +1,5 @@
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY pacer-mcp /pacer-mcp
+ARG TARGETOS
+ARG TARGETARCH
+COPY ${TARGETOS}/${TARGETARCH}/pacer-mcp /pacer-mcp
 ENTRYPOINT ["/pacer-mcp"]
