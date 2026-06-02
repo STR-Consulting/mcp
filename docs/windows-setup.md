@@ -1,4 +1,4 @@
-# Windows setup (for non-programmers)
+# Windows setup
 
 This page is written to be **pasted directly into an AI assistant** (Claude Code, Claude Desktop, Cursor, etc.) running on Windows. The AI will execute the PowerShell commands and walk you through it.
 

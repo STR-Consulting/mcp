@@ -101,7 +101,7 @@ Canonical route list: `pacer/core/internal/web/api/routes.go`. As of writing:
 - `GET /api/v1/client-health/briefs`
 - `GET /api/v1/client-health/scoring-config`
 - `POST /api/v1/portfolios/{portfolio}/intel-brief`
-- `POST /api/v1/portfolios/{portfolio}/intel-brief/attachments`
+- `POST /api/v1/portfolios/{portfolio}/intel-brief/attachments` — **not wrapped as an MCP tool.** Multipart binary upload (PNG chart attachments). MCP has no natural multipart story and RMs/agents have no use case for pushing binaries through a chat session. Use the core admin UI or a direct `curl` if needed.
 - `GET /api/v1/keydata/managed-units`
 
 Always re-read `routes.go` before adding a tool — this list rots.
@@ -131,6 +131,37 @@ Always re-read `routes.go` before adding a tool — this list rots.
 - Always run `shellcheck` after modifying shell scripts
 - Mirror DTO field names from `core/internal/web/api/` exactly — no rename layer
 - No client-side caching, no retries beyond what `http.Client` does by default
+
+### Tool documentation principle
+
+End users of this MCP are **revenue managers** (e.g. REDACTED, REDACTED), not
+programmers. They will drive the tools indirectly via AI assistants. They are
+fluent in short-term-rental jargon (ADR, RevPAR, occupancy, pacing, ABW, LOS,
+YoY same-store, channel mix, etc.) but **do not read API docs, JSON schemas, or
+HTTP semantics**.
+
+Every tool's `Description` field (and the server-level `Instructions`) must
+therefore be **robust, prose-style documentation** written for the agent acting
+on the RM's behalf. Concretely:
+
+- **Lead with the business question the tool answers**, in RM terms — e.g.
+  "Use this when the user asks how a portfolio is pacing vs last year," not
+  "Wraps GET /portfolios/{p}/pacing."
+- **Use STR terminology freely.** Don't dumb it down; RMs and modern agents
+  both understand ADR/RevPAR/ABW. Do define quirky internal terms (e.g.
+  "same-store" = unit count matched against prior year).
+- **Explain key response fields in plain English** with their STR meaning, so
+  the agent can interpret the JSON for the RM without guessing.
+- **Call out caveats inline** — implicit Guesty discounts, missing data when
+  PMS sync is stale, date-type semantics, etc. — so a model that ignores
+  `Instructions` still gets the warning at tool-selection time.
+- **Avoid Go/HTTP/DB jargon** (no "DTO", "endpoint shape", "404 means…", "the
+  handler returns…"). The agent doesn't need to know it's HTTP.
+- **Give a concrete example arg set** for anything more complex than a
+  portfolio name (date ranges, month strings, sort fields).
+
+If a tool's description is shorter than its response shape is complex, it's
+under-documented.
 
 ## Build & Test
 
