@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.str-consulting/pacer-mcp",
+  "name": "io.github.STR-Consulting/pacer-mcp",
   "description": "Pacer revenue-management API as MCP tools: portfolios, pacing, market metrics, Guesty, briefs.",
   "repository": {
     "url": "https://github.com/STR-Consulting/mcp",
