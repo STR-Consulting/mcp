@@ -5,10 +5,16 @@ MCP server in Go that exposes [pacer/core](../core) API endpoints as native Clau
 > **⚠️ This repo is PUBLIC.** Do not commit customer names, employee names,
 > portfolio identifiers, real reservation/unit IDs, PATs, internal hostnames
 > beyond `mc.pacerrev.io`, or any data pulled from a live `core` instance.
-> Issue bodies, commit messages, code comments, and test fixtures are all
-> world-readable. When pasting examples from probes or jig threads, scrub
-> proper nouns first. The upstream `pacer/core` repo is private and is where
-> sensitive context belongs.
+> Commit messages, code comments, and test fixtures are all world-readable.
+> When pasting examples from probes or jig threads, scrub proper nouns first.
+> The upstream `pacer/core` repo is private and is where sensitive context
+> belongs.
+>
+> **This repo must be worked in conjunction with `../core`.** It has no jig
+> config of its own — all issue tracking for pacer-mcp lives in
+> `../core/.issues/` and syncs to the shared ClickUp list. Run all `jig`
+> commands from `../core`. Use issue tags or titles (e.g. `pacer-mcp:`) to
+> distinguish wrapper work from `core` API work.
 
 ## Project Info
 
@@ -26,12 +32,11 @@ That means:
 - **Every new MCP tool needs a matching endpoint in `core`.** If a user asks
   for a tool and the endpoint doesn't exist yet, the work is *primarily* a
   `core` change. The MCP-side wrapper is the easy half.
-- **Coordinate via a jig issue in `core`, not here.** When a tool request
-  requires API work, the canonical tracking issue lives in `../core/.issues/`
-  (synced to the same ClickUp list as this repo — list `901112937048`). Create
-  the `core` issue first describing the endpoint contract (route, method,
-  request/response shape, auth), then a follow-up issue here in
-  `.issues/` referencing it for the MCP wrapper.
+- **All issue tracking lives in `../core/.issues/`.** This repo has no jig
+  config. Whether the work is a `core` API change or a pacer-mcp wrapper,
+  file the issue in `../core/.issues/` (synced to ClickUp list
+  `901112937048`). Use a `pacer-mcp:` title prefix or tag on wrapper issues
+  so they're easy to find.
 - **Don't fork response shapes.** Read the handler in
   `core/internal/web/api/<feature>.go` and reuse its DTO field names verbatim
   in the Go types here. If you find yourself reshaping data, that's a sign the
@@ -44,9 +49,9 @@ That means:
 ### Workflow for "add tool X" requests
 
 1. Check `../core/internal/web/api/routes.go` — does an endpoint already cover it?
-2. **If no:** create a jig issue in `../core/.issues/` (`cd ../core && jig todo create ...`) describing the desired endpoint. *Stop here* on the MCP side until the API is shipped — there's nothing useful to wrap yet.
-3. **If yes:** create a jig issue here in `.issues/` for the MCP wrapper, implement the tool, and ship.
-4. When both sides ship together, mention the linked issue ID in both commit messages so the ClickUp sync threads them.
+2. **If no:** `cd ../core && jig todo create ...` to file an API issue describing the desired endpoint contract. *Stop here* on the MCP side until the API ships — there's nothing useful to wrap yet.
+3. **If yes:** `cd ../core && jig todo create "pacer-mcp: ..." ...` for the wrapper, implement the tool here, and ship.
+4. Mention the jig ID in commit messages on both sides so the ClickUp sync threads them.
 
 ### Version compatibility
 
@@ -134,8 +139,7 @@ Always re-read `routes.go` before adding a tool — this list rots.
 
 ### Tool documentation principle
 
-End users of this MCP are **revenue managers** (e.g. REDACTED, REDACTED), not
-programmers. They will drive the tools indirectly via AI assistants. They are
+End users of this MCP are **revenue managers**, not programmers. They will drive the tools indirectly via AI assistants. They are
 fluent in short-term-rental jargon (ADR, RevPAR, occupancy, pacing, ABW, LOS,
 YoY same-store, channel mix, etc.) but **do not read API docs, JSON schemas, or
 HTTP semantics**.
@@ -183,4 +187,7 @@ Push a `v*` tag — GitHub Actions builds darwin-arm64 and windows-amd64 binarie
 
 ## Issue tracking
 
-Both `pacer-mcp` and `pacer/core` sync to ClickUp list `901112937048`. When a tool request straddles both repos, file the API issue in `../core/.issues/` and the wrapper issue in `./.issues/`, and cross-reference both jig IDs in the issue bodies so the ClickUp thread connects them.
+This repo has no jig config — all issues for pacer-mcp live in
+`../core/.issues/` and sync to ClickUp list `901112937048`. Run `jig` from
+`../core`. Prefix wrapper issue titles with `pacer-mcp:` to keep them
+distinguishable from `core` API issues.
