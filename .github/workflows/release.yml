@@ -37,6 +37,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build MCPB bundle
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          scripts/build-mcpb.sh "$VERSION"
+
+      - name: Attach MCPB bundle to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          gh release upload "$TAG" "dist/pacer-mcp-${VERSION}.mcpb" --clobber
+
   publish-mcp-registry:
     needs: build
     runs-on: ubuntu-latest

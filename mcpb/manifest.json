@@ -1,0 +1,64 @@
+{
+  "manifest_version": "0.3",
+  "name": "pacer-mcp",
+  "display_name": "Pacer",
+  "version": "0.0.0",
+  "description": "Pacer revenue-management API as MCP tools: portfolios, pacing, market metrics, Guesty, briefs.",
+  "long_description": "Exposes the Pacer (pacer/core) revenue-management platform as MCP tools for Claude Desktop. Revenue managers can ask natural-language questions about portfolio pacing vs prior year, market metrics, Guesty pricing/promotion config, and client-health briefs without leaving Claude. Requires a Pacer personal access token (pat_...) issued via the core CLI.",
+  "author": {
+    "name": "STR Consulting",
+    "url": "https://github.com/STR-Consulting"
+  },
+  "homepage": "https://github.com/STR-Consulting/mcp",
+  "documentation": "https://github.com/STR-Consulting/mcp#readme",
+  "support": "https://github.com/STR-Consulting/mcp/issues",
+  "license": "MIT",
+  "keywords": ["pacer", "revenue-management", "str", "short-term-rental", "guesty"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/pacer-mcp-darwin-arm64",
+    "mcp_config": {
+      "command": "${__dirname}/server/pacer-mcp-darwin-arm64",
+      "env": {
+        "PACER_CORE_URL": "${user_config.pacer_core_url}",
+        "PACER_CORE_TOKEN": "${user_config.pacer_core_token}"
+      },
+      "platform_overrides": {
+        "darwin": {
+          "command": "${__dirname}/server/pacer-mcp-darwin-arm64",
+          "env": {
+            "PACER_CORE_URL": "${user_config.pacer_core_url}",
+            "PACER_CORE_TOKEN": "${user_config.pacer_core_token}"
+          }
+        },
+        "win32": {
+          "command": "${__dirname}/server/pacer-mcp-windows-amd64.exe",
+          "env": {
+            "PACER_CORE_URL": "${user_config.pacer_core_url}",
+            "PACER_CORE_TOKEN": "${user_config.pacer_core_token}"
+          }
+        }
+      }
+    }
+  },
+  "user_config": {
+    "pacer_core_token": {
+      "type": "string",
+      "title": "Pacer Core Token",
+      "description": "Personal access token (pat_...) issued via `pacer pat create`. Requires the employee role or higher.",
+      "sensitive": true,
+      "required": true
+    },
+    "pacer_core_url": {
+      "type": "string",
+      "title": "Pacer Core URL",
+      "description": "Base URL of the pacer/core mc app. Leave as the default for production.",
+      "default": "https://mc.pacerrev.io",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32"],
+    "runtimes": {}
+  }
+}

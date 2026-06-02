@@ -2,6 +2,7 @@
 pacer-mcp
 *.exe
 dist/
+*.mcpb
 
 # IDE
 .idea/
