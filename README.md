@@ -17,6 +17,8 @@ scoop bucket add pacer https://github.com/STR-Consulting/scoop-bucket
 scoop install pacer-mcp
 ```
 
+Non-programmer? See [docs/windows-setup.md](docs/windows-setup.md) for a copy-paste prompt to hand to your AI assistant.
+
 ### From source
 
 ```
