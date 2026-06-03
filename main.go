@@ -338,6 +338,32 @@ func (s *server) listPortfolioReservations(
 	return nil, body, nil
 }
 
+// ---------- list_portfolio_new_listings ----------
+
+type listPortfolioNewListingsArgs struct {
+	Portfolio string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+	Since     string `json:"since,omitempty" jsonschema:"earliest managed_since date to include (YYYY-MM-DD, UTC). Defaults to 90 days ago."`
+}
+
+func (s *server) listPortfolioNewListings(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	args listPortfolioNewListingsArgs,
+) (*mcp.CallToolResult, any, error) {
+	if args.Portfolio == "" {
+		return nil, nil, errors.New("portfolio is required")
+	}
+	q := url.Values{}
+	if args.Since != "" {
+		q.Set("since", args.Since)
+	}
+	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/new-listings"), q)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, body, nil
+}
+
 // ---------- get_portfolio_pacing ----------
 
 type getPortfolioPacingArgs struct {
@@ -753,6 +779,44 @@ func registerTools(srv *mcp.Server, s *server) {
 			"Pick date_type carefully: 'bookings made in May' = booked_on; 'guests " +
 			"staying in May' = check_in.",
 	}, s.listPortfolioReservations)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "list_portfolio_new_listings",
+		Description: "Track recently-launched units in a portfolio and how they're " +
+			"booking out of the gate. Returns one row per unit whose managed_since is " +
+			"on or after `since` (default: 90 days ago), with the booking-pace rollup " +
+			"needed to manage Airbnb's new-listing promotion (the first 3 Airbnb " +
+			"bookings on a new listing are discounted 20% by Airbnb).\n\n" +
+			"USE WHEN: user asks 'how are my new listings booking?', 'which new units " +
+			"aren't getting traction yet?', 'have we burned the Airbnb new-listing " +
+			"promo on X yet?', or 'should I still have the near-term price bump on " +
+			"this unit?'. Common workflow: an RM inflates rates further out on a new " +
+			"listing to push the first 3 Airbnb bookings to near-term dates, then " +
+			"removes the bump once airbnb_promo_remaining hits 0.\n\n" +
+			"RESPONSE FIELDS (per unit):\n" +
+			"  managed_since — date the unit went under active management. The " +
+			"\"new listing\" clock starts here, not at PMS row creation.\n" +
+			"  days_active — calendar days since managed_since.\n" +
+			"  total_confirmed_bookings — count of confirmed, non-canceled " +
+			"reservations on the unit (all channels, all stay dates).\n" +
+			"  airbnb_confirmed_bookings — same count filtered to ota='airbnb'. " +
+			"This is what counts toward Airbnb's 3-booking promo quota.\n" +
+			"  airbnb_promo_remaining — max(0, 3 - airbnb_confirmed_bookings). " +
+			"0 means the promo is fully consumed; >0 means the next Airbnb booking " +
+			"will still be 20%-discounted by Airbnb.\n" +
+			"  first_booked_on / last_booked_on — date range of confirmed bookings. " +
+			"null if the unit hasn't booked yet (the case that usually needs " +
+			"attention).\n" +
+			"  next_check_in — soonest upcoming arrival date, or null if nothing " +
+			"on the books.\n\n" +
+			"CAVEATS: \"Confirmed\" excludes canceled reservations — Airbnb's promo " +
+			"quota is also burned by canceled bookings in reality, but this tool " +
+			"reports realized bookings, not gross. Source/channel comes from the " +
+			"normalized `ota` column populated by each PMS sync; coverage is good " +
+			"for Airbnb across all PMSes Pacer pulls from.\n\n" +
+			"ARGS: portfolio (required), since (optional YYYY-MM-DD; defaults to " +
+			"90 days ago).",
+	}, s.listPortfolioNewListings)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "get_portfolio_pacing",

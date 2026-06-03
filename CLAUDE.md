@@ -69,6 +69,7 @@ Single Go binary, runs as MCP server via stdio. Claude Code (or any MCP client) 
 | Tool | Description |
 |------|-------------|
 | `health_check` | Pings the PAT-gated `/api/v1/portfolios/briefable` endpoint to verify URL + token config |
+| `list_portfolio_new_listings` | Per-portfolio new-listing tracker: recently-managed units with confirmed-booking counts (total + Airbnb-only), Airbnb new-listing-promo quota remaining (3 - airbnb_confirmed), and first/last/next booking dates |
 | `guesty_pricing_config` | Per-unit PMS pricing config for a portfolio (base price, fees, min/max nights, channel settings, attached promotion IDs, last-synced timestamp) |
 | `guesty_reservation_promotions` | Channel-applied promotions (Airbnb, Vrbo, etc.) for a portfolio's reservations in a given month; `flat=true` returns aggregated per-reservation rows |
 
@@ -96,6 +97,7 @@ Canonical route list: `pacer/core/internal/web/api/routes.go`. As of writing:
 - `GET /api/v1/portfolios/{portfolio}/team`
 - `GET /api/v1/portfolios/{portfolio}/units`
 - `GET /api/v1/portfolios/{portfolio}/reservations`
+- `GET /api/v1/portfolios/{portfolio}/new-listings`
 - `GET /api/v1/portfolios/{portfolio}/pacing`
 - `GET /api/v1/portfolios/{portfolio}/metrics/ytd`
 - `GET /api/v1/portfolios/{portfolio}/market-metrics`
