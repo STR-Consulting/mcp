@@ -196,6 +196,36 @@ func toolError(err error) (*mcp.CallToolResult, any, error) {
 	}, nil, nil
 }
 
+// doGETTool wraps doGET to return the standard tool-result tuple: success
+// passes the JSON body through as structured content; failure returns a
+// toolError envelope. Collapses the `body, err := ...; if err { toolError(err) }
+// return nil, body, nil` boilerplate at every GET-backed handler.
+func (s *server) doGETTool(ctx context.Context, path string, query url.Values) (*mcp.CallToolResult, any, error) {
+	body, err := s.doGET(ctx, path, query)
+	if err != nil {
+		return toolError(err)
+	}
+	return nil, body, nil
+}
+
+// doPOSTJSONTool is the POST sibling of doGETTool.
+func (s *server) doPOSTJSONTool(ctx context.Context, path string, body any) (*mcp.CallToolResult, any, error) {
+	respBody, err := s.doPOSTJSON(ctx, path, body)
+	if err != nil {
+		return toolError(err)
+	}
+	return nil, respBody, nil
+}
+
+// setOpt writes key=fmt(*v) onto q when v is non-nil. Cleans up the repeated
+// `if args.X != nil { q.Set("x", strconv.Format...(*args.X)) }` blocks in
+// handlers that forward optional args to core.
+func setOpt[T any](q url.Values, key string, v *T, fmt func(T) string) {
+	if v != nil {
+		q.Set(key, fmt(*v))
+	}
+}
+
 // ---------- health_check ----------
 
 type healthCheckArgs struct{}
@@ -297,11 +327,7 @@ func (s *server) listBriefablePortfolios(
 	if args.Q != "" {
 		q.Set("q", args.Q)
 	}
-	body, err := s.doGET(ctx, "/api/v1/portfolios/briefable", q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, "/api/v1/portfolios/briefable", q)
 }
 
 // ---------- list_portfolio_teams ----------
@@ -313,11 +339,7 @@ func (s *server) listPortfolioTeams(
 	_ *mcp.CallToolRequest,
 	_ listPortfolioTeamsArgs,
 ) (*mcp.CallToolResult, any, error) {
-	body, err := s.doGET(ctx, "/api/v1/portfolios/teams", nil)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, "/api/v1/portfolios/teams", nil)
 }
 
 // ---------- get_portfolio_team ----------
@@ -334,11 +356,7 @@ func (s *server) getPortfolioTeam(
 	if args.Portfolio == "" {
 		return toolError(errors.New("portfolio is required"))
 	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/team"), nil)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/team"), nil)
 }
 
 // ---------- list_portfolio_units ----------
@@ -355,11 +373,7 @@ func (s *server) listPortfolioUnits(
 	if args.Portfolio == "" {
 		return toolError(errors.New("portfolio is required"))
 	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/units"), nil)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/units"), nil)
 }
 
 // ---------- list_portfolio_reservations ----------
@@ -393,26 +407,12 @@ func (s *server) listPortfolioReservations(
 	if args.DateType != "" {
 		q.Set("date_type", args.DateType)
 	}
-	if args.UnitID != nil {
-		q.Set("unit_id", strconv.FormatInt(*args.UnitID, 10))
-	}
-	if args.ConfirmedOnly != nil {
-		q.Set("confirmed_only", strconv.FormatBool(*args.ConfirmedOnly))
-	}
-	if args.HasPromo != nil {
-		q.Set("has_promo", strconv.FormatBool(*args.HasPromo))
-	}
-	if args.Limit != nil {
-		q.Set("limit", strconv.Itoa(*args.Limit))
-	}
-	if args.Offset != nil {
-		q.Set("offset", strconv.Itoa(*args.Offset))
-	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/reservations"), q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	setOpt(q, "unit_id", args.UnitID, func(v int64) string { return strconv.FormatInt(v, 10) })
+	setOpt(q, "confirmed_only", args.ConfirmedOnly, strconv.FormatBool)
+	setOpt(q, "has_promo", args.HasPromo, strconv.FormatBool)
+	setOpt(q, "limit", args.Limit, strconv.Itoa)
+	setOpt(q, "offset", args.Offset, strconv.Itoa)
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/reservations"), q)
 }
 
 // ---------- list_portfolio_new_listings ----------
@@ -434,11 +434,7 @@ func (s *server) listPortfolioNewListings(
 	if args.Since != "" {
 		q.Set("since", args.Since)
 	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/new-listings"), q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/new-listings"), q)
 }
 
 // ---------- get_portfolio_pacing ----------
@@ -464,11 +460,7 @@ func (s *server) getPortfolioPacing(
 	if args.SortBy != "" {
 		q.Set("sort_by", args.SortBy)
 	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/pacing"), q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/pacing"), q)
 }
 
 // ---------- get_portfolio_metrics_ytd ----------
@@ -490,11 +482,7 @@ func (s *server) getPortfolioMetricsYTD(
 	if args.Year > 0 {
 		q.Set("year", strconv.Itoa(args.Year))
 	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/metrics/ytd"), q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/metrics/ytd"), q)
 }
 
 // ---------- get_portfolio_market_metrics ----------
@@ -521,11 +509,7 @@ func (s *server) getPortfolioMarketMetrics(
 	if args.Decomposed {
 		q.Set("decomposed", "true")
 	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/market-metrics"), q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/market-metrics"), q)
 }
 
 // ---------- guesty_pricing_config ----------
@@ -542,11 +526,7 @@ func (s *server) guestyPricingConfig(
 	if args.Portfolio == "" {
 		return toolError(errors.New("portfolio is required"))
 	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/pricing-config"), nil)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/pricing-config"), nil)
 }
 
 // ---------- guesty_reservation_promotions ----------
@@ -587,11 +567,7 @@ func (s *server) guestyReservationPromotions(
 	if args.Flat {
 		q.Set("flat", "true")
 	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/reservation-promotions"), q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/reservation-promotions"), q)
 }
 
 // ---------- get_client_health_brief ----------
@@ -613,11 +589,7 @@ func (s *server) getClientHealthBrief(
 	if args.Date != "" {
 		q.Set("date", args.Date)
 	}
-	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/client-health-brief"), q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/client-health-brief"), q)
 }
 
 // ---------- upsert_client_health_brief ----------
@@ -681,11 +653,7 @@ func (s *server) listClientHealthBriefs(
 	if args.AsOf != "" {
 		q.Set("as_of", args.AsOf)
 	}
-	body, err := s.doGET(ctx, "/api/v1/client-health/briefs", q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, "/api/v1/client-health/briefs", q)
 }
 
 // ---------- get_client_health_scoring_config ----------
@@ -697,11 +665,7 @@ func (s *server) getClientHealthScoringConfig(
 	_ *mcp.CallToolRequest,
 	_ getClientHealthScoringConfigArgs,
 ) (*mcp.CallToolResult, any, error) {
-	body, err := s.doGET(ctx, "/api/v1/client-health/scoring-config", nil)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, "/api/v1/client-health/scoring-config", nil)
 }
 
 // ---------- upsert_intel_brief ----------
@@ -757,11 +721,7 @@ func (s *server) upsertIntelBrief(
 	}
 	b := bodyT{upsertIntelBriefArgs: args}
 	b.Portfolio = ""
-	body, err := s.doPOSTJSON(ctx, portfolioPath(args.Portfolio, "/intel-brief"), b)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doPOSTJSONTool(ctx, portfolioPath(args.Portfolio, "/intel-brief"), b)
 }
 
 // ---------- list_managed_keydata_units ----------
@@ -780,11 +740,7 @@ func (s *server) listManagedKeydataUnits(
 	}
 	q := url.Values{}
 	q.Set("kd_customer", args.KDCustomer)
-	body, err := s.doGET(ctx, "/api/v1/keydata/managed-units", q)
-	if err != nil {
-		return toolError(err)
-	}
-	return nil, body, nil
+	return s.doGETTool(ctx, "/api/v1/keydata/managed-units", q)
 }
 
 func main() {
