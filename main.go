@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -180,6 +181,21 @@ func portfolioPath(portfolio, suffix string) string {
 	return "/api/v1/portfolios/" + url.PathEscape(portfolio) + suffix
 }
 
+// toolError builds a tool result carrying the error in both text content
+// (for human / fallback display) and structured content (so MCP clients
+// that key off structuredContent see the failure instead of silently
+// reading the absence of data as "zero rows").
+func toolError(err error) (*mcp.CallToolResult, any, error) {
+	msg := err.Error()
+	return &mcp.CallToolResult{
+		IsError: true,
+		StructuredContent: map[string]any{
+			"error": map[string]any{"message": msg},
+		},
+		Content: []mcp.Content{&mcp.TextContent{Text: msg}},
+	}, nil, nil
+}
+
 // ---------- health_check ----------
 
 type healthCheckArgs struct{}
@@ -187,12 +203,18 @@ type healthCheckArgs struct{}
 type healthCheckResult struct {
 	CoreURL    string `json:"core_url"`
 	TokenSet   bool   `json:"token_set"`
+	Healthy    bool   `json:"healthy"`
 	Reachable  bool   `json:"reachable"`
 	StatusCode int    `json:"status_code,omitempty"`
+	BodyBytes  int    `json:"body_bytes"`
+	HostWarn   string `json:"host_warning,omitempty"`
 	Error      string `json:"error,omitempty"`
 	ServerVer  string `json:"server_version"`
 }
 
+// healthCheck probes a real data endpoint and requires a non-empty JSON body
+// before reporting healthy. Reports the resolved coreURL and warns when it
+// doesn't match the expected production host so misconfig surfaces clearly.
 func (s *server) healthCheck(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
@@ -202,6 +224,9 @@ func (s *server) healthCheck(
 		CoreURL:   s.coreURL,
 		TokenSet:  s.coreToken != "",
 		ServerVer: version,
+	}
+	if s.coreURL != defaultCoreURL && !strings.HasPrefix(s.coreURL, "http://localhost") && !strings.HasPrefix(s.coreURL, "http://127.0.0.1") {
+		result.HostWarn = "PACER_CORE_URL is not " + defaultCoreURL + " — production should resolve there"
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.coreURL+healthProbePath, nil)
@@ -222,7 +247,39 @@ func (s *server) healthCheck(
 
 	result.Reachable = resp.StatusCode < 500
 	result.StatusCode = resp.StatusCode
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		result.Error = "read body: " + err.Error()
+		return nil, result, nil
+	}
+	result.BodyBytes = len(body)
+	switch {
+	case resp.StatusCode >= 400:
+		result.Error = fmt.Sprintf("core API %d: %s", resp.StatusCode, truncate(string(body), 200))
+	case len(bytes.TrimSpace(body)) == 0:
+		result.Error = "core API returned " + strconv.Itoa(resp.StatusCode) + " with empty body — PACER_CORE_URL may be pointed at the wrong host (expected " + defaultCoreURL + ")"
+	case !looksLikeJSON(body):
+		result.Error = "core API returned " + strconv.Itoa(resp.StatusCode) + " with non-JSON body — likely an edge/proxy response, not the Pacer API"
+	default:
+		result.Healthy = true
+	}
 	return nil, result, nil
+}
+
+func looksLikeJSON(b []byte) bool {
+	t := bytes.TrimSpace(b)
+	if len(t) == 0 {
+		return false
+	}
+	return t[0] == '{' || t[0] == '[' || t[0] == '"'
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // ---------- list_briefable_portfolios ----------
@@ -242,7 +299,7 @@ func (s *server) listBriefablePortfolios(
 	}
 	body, err := s.doGET(ctx, "/api/v1/portfolios/briefable", q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -258,7 +315,7 @@ func (s *server) listPortfolioTeams(
 ) (*mcp.CallToolResult, any, error) {
 	body, err := s.doGET(ctx, "/api/v1/portfolios/teams", nil)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -275,11 +332,11 @@ func (s *server) getPortfolioTeam(
 	args getPortfolioTeamArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/team"), nil)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -296,11 +353,11 @@ func (s *server) listPortfolioUnits(
 	args listPortfolioUnitsArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/units"), nil)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -308,10 +365,15 @@ func (s *server) listPortfolioUnits(
 // ---------- list_portfolio_reservations ----------
 
 type listPortfolioReservationsArgs struct {
-	Portfolio string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
-	Start     string `json:"start" jsonschema:"range start date (YYYY-MM-DD, UTC)"`
-	End       string `json:"end" jsonschema:"range end date (YYYY-MM-DD, UTC), inclusive"`
-	DateType  string `json:"date_type,omitempty" jsonschema:"which date the range applies to: 'check_in' (default), 'check_out', or 'booked_on'"`
+	Portfolio     string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+	Start         string `json:"start" jsonschema:"range start date (YYYY-MM-DD, UTC)"`
+	End           string `json:"end" jsonschema:"range end date (YYYY-MM-DD, UTC), inclusive"`
+	DateType      string `json:"date_type,omitempty" jsonschema:"which date the range applies to: 'check_in' (default), 'check_out', or 'booked_on'"`
+	UnitID        *int64 `json:"unit_id,omitempty" jsonschema:"optional: only reservations for this unit"`
+	ConfirmedOnly *bool  `json:"confirmed_only,omitempty" jsonschema:"optional: exclude inquiries / unconfirmed bookings"`
+	HasPromo      *bool  `json:"has_promo,omitempty" jsonschema:"optional: only reservations with at least one channel promotion applied"`
+	Limit         *int   `json:"limit,omitempty" jsonschema:"page size (default 500, max 5000)"`
+	Offset        *int   `json:"offset,omitempty" jsonschema:"row offset for pagination; combine with limit. The response.pagination.has_more flag signals whether to fetch the next page"`
 }
 
 func (s *server) listPortfolioReservations(
@@ -320,10 +382,10 @@ func (s *server) listPortfolioReservations(
 	args listPortfolioReservationsArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	if args.Start == "" || args.End == "" {
-		return nil, nil, errors.New("start and end are required (YYYY-MM-DD)")
+		return toolError(errors.New("start and end are required (YYYY-MM-DD)"))
 	}
 	q := url.Values{}
 	q.Set("start", args.Start)
@@ -331,9 +393,24 @@ func (s *server) listPortfolioReservations(
 	if args.DateType != "" {
 		q.Set("date_type", args.DateType)
 	}
+	if args.UnitID != nil {
+		q.Set("unit_id", strconv.FormatInt(*args.UnitID, 10))
+	}
+	if args.ConfirmedOnly != nil {
+		q.Set("confirmed_only", strconv.FormatBool(*args.ConfirmedOnly))
+	}
+	if args.HasPromo != nil {
+		q.Set("has_promo", strconv.FormatBool(*args.HasPromo))
+	}
+	if args.Limit != nil {
+		q.Set("limit", strconv.Itoa(*args.Limit))
+	}
+	if args.Offset != nil {
+		q.Set("offset", strconv.Itoa(*args.Offset))
+	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/reservations"), q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -351,7 +428,7 @@ func (s *server) listPortfolioNewListings(
 	args listPortfolioNewListingsArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	q := url.Values{}
 	if args.Since != "" {
@@ -359,7 +436,7 @@ func (s *server) listPortfolioNewListings(
 	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/new-listings"), q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -378,7 +455,7 @@ func (s *server) getPortfolioPacing(
 	args getPortfolioPacingArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	q := url.Values{}
 	if args.Days > 0 {
@@ -389,7 +466,7 @@ func (s *server) getPortfolioPacing(
 	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/pacing"), q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -407,7 +484,7 @@ func (s *server) getPortfolioMetricsYTD(
 	args getPortfolioMetricsYTDArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	q := url.Values{}
 	if args.Year > 0 {
@@ -415,7 +492,7 @@ func (s *server) getPortfolioMetricsYTD(
 	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/metrics/ytd"), q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -434,10 +511,10 @@ func (s *server) getPortfolioMarketMetrics(
 	args getPortfolioMarketMetricsArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	if args.Month == "" {
-		return nil, nil, errors.New("month is required (YYYY-MM)")
+		return toolError(errors.New("month is required (YYYY-MM)"))
 	}
 	q := url.Values{}
 	q.Set("month", args.Month)
@@ -446,7 +523,7 @@ func (s *server) getPortfolioMarketMetrics(
 	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/market-metrics"), q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -463,11 +540,11 @@ func (s *server) guestyPricingConfig(
 	args guestyPricingConfigArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/pricing-config"), nil)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -476,8 +553,11 @@ func (s *server) guestyPricingConfig(
 
 type guestyReservationPromotionsArgs struct {
 	Portfolio string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
-	Month     string `json:"month" jsonschema:"target month in YYYY-MM format"`
-	Flat      bool   `json:"flat,omitempty" jsonschema:"if true, return one row per reservation (aggregated promo_titles[] and total_discount). default false returns one row per promo line."`
+	Month     string `json:"month,omitempty" jsonschema:"target month in YYYY-MM format (filters by check_in within that month). Pass either month OR start/end."`
+	Start     string `json:"start,omitempty" jsonschema:"window start date YYYY-MM-DD; pair with end + optional date_type for arbitrary windows (e.g. promos on bookings made in the last 30 days)"`
+	End       string `json:"end,omitempty" jsonschema:"window end date YYYY-MM-DD inclusive"`
+	DateType  string `json:"date_type,omitempty" jsonschema:"which reservation date the window applies to: 'check_in' (default), 'check_out', or 'booked_on'"`
+	Flat      bool   `json:"flat,omitempty" jsonschema:"if true, return one row per reservation (aggregated). default false returns one row per promo line. Each row carries: is_discount (false for AF/MAR/AFE markups so callers can exclude them from discount totals), booked_on, rent (base rent at time of booking), discount_pct (computed when rent>0 and the row is a discount). Summary rows additionally carry total_discount + total_markup + total_net so markup-vs-discount aggregations are first-class."`
 }
 
 func (s *server) guestyReservationPromotions(
@@ -486,19 +566,30 @@ func (s *server) guestyReservationPromotions(
 	args guestyReservationPromotionsArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
-	if args.Month == "" {
-		return nil, nil, errors.New("month is required (YYYY-MM)")
+	if args.Month == "" && (args.Start == "" || args.End == "") {
+		return toolError(errors.New("either month=YYYY-MM or start=YYYY-MM-DD&end=YYYY-MM-DD is required"))
 	}
 	q := url.Values{}
-	q.Set("month", args.Month)
+	if args.Month != "" {
+		q.Set("month", args.Month)
+	}
+	if args.Start != "" {
+		q.Set("start", args.Start)
+	}
+	if args.End != "" {
+		q.Set("end", args.End)
+	}
+	if args.DateType != "" {
+		q.Set("date_type", args.DateType)
+	}
 	if args.Flat {
 		q.Set("flat", "true")
 	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/reservation-promotions"), q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -516,7 +607,7 @@ func (s *server) getClientHealthBrief(
 	args getClientHealthBriefArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	q := url.Values{}
 	if args.Date != "" {
@@ -524,7 +615,7 @@ func (s *server) getClientHealthBrief(
 	}
 	body, err := s.doGET(ctx, portfolioPath(args.Portfolio, "/client-health-brief"), q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -552,16 +643,16 @@ func (s *server) upsertClientHealthBrief(
 	args upsertClientHealthBriefArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	if args.BriefDate == "" {
-		return nil, nil, errors.New("brief_date is required (YYYY-MM-DD)")
+		return toolError(errors.New("brief_date is required (YYYY-MM-DD)"))
 	}
 	if args.Sentiment < 1 || args.Sentiment > 5 {
-		return nil, nil, errors.New("sentiment must be 1-5")
+		return toolError(errors.New("sentiment must be 1-5"))
 	}
 	if args.Stage == "" {
-		return nil, nil, errors.New("stage is required")
+		return toolError(errors.New("stage is required"))
 	}
 	body, err := s.doPOSTJSON(ctx, portfolioPath(args.Portfolio, "/client-health-brief"), upsertClientHealthBriefBody{
 		BriefDate: args.BriefDate,
@@ -570,7 +661,7 @@ func (s *server) upsertClientHealthBrief(
 		Payload:   args.Payload,
 	})
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -592,7 +683,7 @@ func (s *server) listClientHealthBriefs(
 	}
 	body, err := s.doGET(ctx, "/api/v1/client-health/briefs", q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -608,7 +699,7 @@ func (s *server) getClientHealthScoringConfig(
 ) (*mcp.CallToolResult, any, error) {
 	body, err := s.doGET(ctx, "/api/v1/client-health/scoring-config", nil)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -645,19 +736,19 @@ func (s *server) upsertIntelBrief(
 	args upsertIntelBriefArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.Portfolio == "" {
-		return nil, nil, errors.New("portfolio is required")
+		return toolError(errors.New("portfolio is required"))
 	}
 	if args.BriefDate == "" {
-		return nil, nil, errors.New("brief_date is required (YYYY-MM-DD)")
+		return toolError(errors.New("brief_date is required (YYYY-MM-DD)"))
 	}
 	if args.Stage == "" {
-		return nil, nil, errors.New("stage is required")
+		return toolError(errors.New("stage is required"))
 	}
 	if args.Sentiment < 1 || args.Sentiment > 5 {
-		return nil, nil, errors.New("sentiment must be 1-5")
+		return toolError(errors.New("sentiment must be 1-5"))
 	}
 	if args.BriefMarkdown == "" {
-		return nil, nil, errors.New("brief_markdown is required")
+		return toolError(errors.New("brief_markdown is required"))
 	}
 	// Strip portfolio from the body — it's in the URL.
 	type bodyT struct {
@@ -668,7 +759,7 @@ func (s *server) upsertIntelBrief(
 	b.Portfolio = ""
 	body, err := s.doPOSTJSON(ctx, portfolioPath(args.Portfolio, "/intel-brief"), b)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -685,13 +776,13 @@ func (s *server) listManagedKeydataUnits(
 	args listManagedKeydataUnitsArgs,
 ) (*mcp.CallToolResult, any, error) {
 	if args.KDCustomer == "" {
-		return nil, nil, errors.New("kd_customer is required (KeyData account UUID)")
+		return toolError(errors.New("kd_customer is required (KeyData account UUID)"))
 	}
 	q := url.Values{}
 	q.Set("kd_customer", args.KDCustomer)
 	body, err := s.doGET(ctx, "/api/v1/keydata/managed-units", q)
 	if err != nil {
-		return nil, nil, err
+		return toolError(err)
 	}
 	return nil, body, nil
 }
@@ -767,9 +858,10 @@ func registerTools(srv *mcp.Server, s *server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "list_portfolio_reservations",
 		Description: "Return reservations for a portfolio in a date range, including " +
-			"confirmation status, rent, fees, guest count, and cancellation info. " +
-			"This is the raw booking data — use it for ad-hoc analysis the metric " +
-			"tools don't cover.\n\n" +
+			"confirmation status, rent, fees, guest count, cancellation info, plus " +
+			"unit city/region inline so location-grouped views don't need a second " +
+			"roster call. This is the raw booking data — use it for ad-hoc analysis " +
+			"the metric tools don't cover.\n\n" +
 			"USE WHEN: user wants a specific list of bookings ('show me cancellations " +
 			"last month', 'reservations checking in next week', 'bookings made in May " +
 			"for July arrivals').\n\n" +
@@ -777,7 +869,13 @@ func registerTools(srv *mcp.Server, s *server) {
 			"date_type = 'check_in' (default — range filters arrival dates), " +
 			"'check_out' (departure dates), or 'booked_on' (when the booking was made). " +
 			"Pick date_type carefully: 'bookings made in May' = booked_on; 'guests " +
-			"staying in May' = check_in.",
+			"staying in May' = check_in.\n\n" +
+			"OPTIONAL FILTERS: unit_id (one unit), confirmed_only=true (skip " +
+			"unconfirmed / inquiries), has_promo=true (only rows with at least one " +
+			"channel promotion applied — pair with guesty_reservation_promotions for " +
+			"detail).\n\n" +
+			"PAGINATION: limit (default 500, max 5000) + offset. The response includes " +
+			"a pagination block with has_more — fetch the next page when has_more=true.",
 	}, s.listPortfolioReservations)
 
 	mcp.AddTool(srv, &mcp.Tool{
@@ -879,18 +977,40 @@ func registerTools(srv *mcp.Server, s *server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "guesty_reservation_promotions",
 		Description: "Channel-applied promotions (Airbnb, Vrbo, etc.) on reservations " +
-			"in a given month. By default returns one row per (reservation × promo " +
+			"in a date window. By default returns one row per (reservation × promo " +
 			"line); pass flat=true for one row per reservation with aggregated " +
-			"promo_titles[] and total_discount.\n\n" +
+			"totals.\n\n" +
 			"USE WHEN: 'which bookings got which promo?', 'monthly promo discount " +
-			"totals', 'export of reservations with promo name if applied'. Use " +
-			"flat=true for export-style monthly summaries.\n\n" +
+			"totals', 'export of reservations with promo name if applied', 'promos " +
+			"on bookings made in the last 30 days'. Use flat=true for export-style " +
+			"monthly summaries.\n\n" +
+			"FILTER WINDOW: pass either month=YYYY-MM (filters by check_in within " +
+			"that month — the default behavior) OR start=YYYY-MM-DD&end=YYYY-MM-DD " +
+			"with optional date_type=check_in|check_out|booked_on for arbitrary " +
+			"windows. 'Promos on bookings made in the last 30 days' = " +
+			"start/end + date_type=booked_on.\n\n" +
+			"PROMO_NORMAL_TYPE TAXONOMY (so you can read the data correctly):\n" +
+			"  LOSD = length-of-stay discount (real discount)\n" +
+			"  GCD  = generic channel discount (real discount; channel rebates)\n" +
+			"  PRO  = PROMOTION (host-configured discount campaign)\n" +
+			"  AF   = ACCOMMODATION_FARE (markup, NOT a discount)\n" +
+			"  AFE  = ADDITIONAL (markup, NOT a discount)\n" +
+			"  MAR  = markup (NOT a discount)\n" +
+			"Every row carries is_discount=true only for LOSD/GCD/PRO. Treat AF/AFE/" +
+			"MAR rows as price increases — exclude them from discount totals.\n\n" +
+			"PER-ROW FIELDS: booked_on (when the booking was made), rent (base rent " +
+			"on the reservation at booking time), discount_pct (computed when " +
+			"rent>0 and the row is a discount). In flat mode each reservation row " +
+			"adds total_discount (sum of LOSD+GCD+PRO amounts), total_markup (sum " +
+			"of AF+AFE+MAR amounts), and total_net (the raw view sum — what older " +
+			"clients called total_discount; kept for backward compat).\n\n" +
 			"CAVEATS: Only channel-sent promos that produced an invoice line are " +
 			"returned. Airbnb's internal SKU IDs are not preserved — only the " +
 			"descriptive title (e.g. 'Weekly discount', 'New listing promotion'). " +
 			"Implicit weekly/monthly factor discounts from pricing-config will NOT " +
 			"appear here.\n\n" +
-			"ARGS: portfolio (required), month (YYYY-MM, required), flat (optional bool).",
+			"ARGS: portfolio (required), month OR start+end (one is required), " +
+			"date_type (optional), flat (optional bool).",
 	}, s.guestyReservationPromotions)
 
 	mcp.AddTool(srv, &mcp.Tool{

@@ -19,6 +19,17 @@ scoop install pacer-mcp
 
 Non-programmer? See [docs/windows-setup.md](docs/windows-setup.md) for a copy-paste prompt to hand to your AI assistant.
 
+### Linux (binary tarball)
+
+For server/automation use. Replace `<version>` and pick `amd64` or `arm64`:
+
+```
+curl -fsSL https://github.com/STR-Consulting/mcp/releases/latest/download/pacer-mcp_<version>_linux_amd64.tar.gz | tar -xz
+sudo install pacer-mcp /usr/local/bin/
+```
+
+Or use the OCI image: `ghcr.io/str-consulting/pacer-mcp:latest` (linux/amd64 + linux/arm64).
+
 ### From source
 
 ```
@@ -113,7 +124,7 @@ go test ./...
 golangci-lint run --fix ./...
 ```
 
-Releases are automated — push a `v*` tag and GitHub Actions builds darwin-arm64 and windows-amd64 binaries, then updates the Homebrew tap and Scoop bucket.
+Releases are automated — push a `v*` tag and GitHub Actions builds darwin-arm64, windows-amd64, and linux-{amd64,arm64} binaries (plus a `ghcr.io/str-consulting/pacer-mcp` OCI image), then updates the Homebrew tap and Scoop bucket and publishes to the MCP Registry.
 
 ## License
 

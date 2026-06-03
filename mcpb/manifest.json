@@ -52,8 +52,8 @@
     "pacer_core_url": {
       "type": "string",
       "title": "Pacer Core URL",
-      "description": "Base URL of the pacer/core mc app. Leave as the default for production.",
-      "default": "https://mc.pacerrev.io",
+      "description": "Base URL of the pacer/core app (PAT JSON API is mounted here). Leave as the default for production.",
+      "default": "https://portal.pacerrev.io",
       "required": false
     }
   },

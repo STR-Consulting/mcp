@@ -275,3 +275,99 @@ func TestHealthCheck_UnreachableServer(t *testing.T) {
 		t.Error("Error empty, want a transport error message")
 	}
 }
+
+// TestHealthCheck_HealthyOn200JSON locks in the upgrade from "any 200 = OK"
+// to "200 + non-empty JSON body = OK" so a Cloudflare-style empty 200
+// can't pose as a healthy backend.
+func TestHealthCheck_HealthyOn200JSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":1}]`))
+	}))
+	defer ts.Close()
+
+	s := &server{coreURL: ts.URL, coreToken: "pat_test", httpClient: ts.Client()}
+	_, result, err := s.healthCheck(context.Background(), nil, healthCheckArgs{})
+	if err != nil {
+		t.Fatalf("healthCheck err: %v", err)
+	}
+	if !result.Healthy {
+		t.Errorf("Healthy = false, want true on 200+JSON; result=%+v", result)
+	}
+	if result.BodyBytes == 0 {
+		t.Error("BodyBytes = 0 on non-empty body")
+	}
+}
+
+func TestHealthCheck_EmptyBodyIsNotHealthy(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // empty body — Cloudflare-style
+	}))
+	defer ts.Close()
+
+	s := &server{coreURL: ts.URL, httpClient: ts.Client()}
+	_, result, err := s.healthCheck(context.Background(), nil, healthCheckArgs{})
+	if err != nil {
+		t.Fatalf("healthCheck err: %v", err)
+	}
+	if result.Healthy {
+		t.Error("Healthy = true on empty body, want false")
+	}
+	if !strings.Contains(result.Error, "empty body") {
+		t.Errorf("Error = %q, want it to mention 'empty body'", result.Error)
+	}
+}
+
+func TestHealthCheck_NonJSONBodyIsNotHealthy(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<html>edge</html>"))
+	}))
+	defer ts.Close()
+
+	s := &server{coreURL: ts.URL, httpClient: ts.Client()}
+	_, result, err := s.healthCheck(context.Background(), nil, healthCheckArgs{})
+	if err != nil {
+		t.Fatalf("healthCheck err: %v", err)
+	}
+	if result.Healthy {
+		t.Error("Healthy = true on HTML body, want false")
+	}
+	if !strings.Contains(result.Error, "non-JSON") {
+		t.Errorf("Error = %q, want it to mention 'non-JSON'", result.Error)
+	}
+}
+
+func TestHealthCheck_HostWarning(t *testing.T) {
+	s := &server{coreURL: "https://example.invalid", httpClient: http.DefaultClient}
+	_, result, _ := s.healthCheck(context.Background(), nil, healthCheckArgs{})
+	if result.HostWarn == "" {
+		t.Error("HostWarn empty for non-default host, want a warning")
+	}
+}
+
+// TestToolError verifies that errors are surfaced via BOTH text content
+// (for fallback display) AND structuredContent (so clients keying off
+// structuredContent see the failure instead of silently reading empty data).
+func TestToolError(t *testing.T) {
+	res, _, err := toolError(testErr("boom"))
+	if err != nil {
+		t.Fatalf("toolError returned a Go error: %v", err)
+	}
+	if res == nil || !res.IsError {
+		t.Fatal("IsError = false, want true")
+	}
+	if res.StructuredContent == nil {
+		t.Fatal("StructuredContent nil — clients reading only structuredContent would see no failure")
+	}
+	env, ok := res.StructuredContent.(map[string]any)
+	if !ok || env["error"] == nil {
+		t.Errorf("StructuredContent = %+v, want { error: {...} } envelope", res.StructuredContent)
+	}
+	if len(res.Content) == 0 {
+		t.Error("Content empty, want a text block with the error message")
+	}
+}
+
+type testErr string
+
+func (e testErr) Error() string { return string(e) }

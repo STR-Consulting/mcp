@@ -15,8 +15,8 @@
       "environmentVariables": [
         {
           "name": "PACER_CORE_URL",
-          "description": "Base URL of the pacer/core mc app. Defaults to production (mc.pacerrev.io).",
-          "default": "https://mc.pacerrev.io",
+          "description": "Base URL of the pacer/core app (PAT JSON API). Defaults to production (portal.pacerrev.io).",
+          "default": "https://portal.pacerrev.io",
           "isRequired": false,
           "isSecret": false,
           "format": "string"
