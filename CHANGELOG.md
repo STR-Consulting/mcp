@@ -1,5 +1,12 @@
 # Changelog
 
+## Week of Jun 7 – Jun 13, 2026
+
+### ✨ Features
+
+- Add `list_portfolio_integrations` MCP tool wrapping the new core `GET /api/v1/portfolios/{portfolio}/integrations` endpoint. Surfaces which PMS, RMS, channel manager, etc. a portfolio is wired to, with both lowercase enum keys (`platform`, `purpose`) and human-readable display names (`platform_name`, `purpose_name`). Encrypted credentials are never returned — only a `has_secrets` boolean (jig wib-22l).
+- Add `get_portfolio_integration_secrets` and `set_portfolio_integration_secrets` MCP tools for reading and overwriting the encrypted PMS/RMS credentials Pacer stores for a portfolio. Wraps the new core `GET`/`PUT /api/v1/portfolios/{portfolio}/integrations/{integration}/secrets` endpoints; integration is identified by row id (from `list_portfolio_integrations`) or a `platform:purpose` tuple. Access is admin OR portfolio-assigned staff OR their supervisor — gating is enforced in core; the MCP wrapper just forwards the caller's PAT. Setter is destructive (full overwrite, no versioning); reads are audited to `core.audit_log` and writes ride the existing `audit_portfolio_integrations` trigger (jig ip6-7l9).
+
 ## Week of May 31 – Jun 6, 2026
 
 ### ✨ Features

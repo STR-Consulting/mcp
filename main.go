@@ -143,6 +143,40 @@ func (s *server) doGET(ctx context.Context, path string, query url.Values) (json
 	return json.RawMessage(body), nil
 }
 
+// doJSONBody performs an authenticated request with a JSON body (POST/PUT/PATCH)
+// and returns the raw response body. Same error envelope as doGET.
+func (s *server) doJSONBody(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal body: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, s.coreURL+path, bytes.NewReader(buf))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.coreToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.coreToken)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("core API %d: %s", resp.StatusCode, string(respBody))
+	}
+	if len(bytes.TrimSpace(respBody)) == 0 {
+		return nil, fmt.Errorf("core API returned %d with empty body — backend may be down or %s may be pointed at the wrong host (expected portal.pacerrev.io)", resp.StatusCode, s.coreURL)
+	}
+	return json.RawMessage(respBody), nil
+}
+
 // doPOSTJSON performs an authenticated POST with a JSON body against the
 // core API and returns the raw response body. Same error envelope as doGET.
 func (s *server) doPOSTJSON(ctx context.Context, path string, body any) (json.RawMessage, error) {
@@ -211,6 +245,15 @@ func (s *server) doGETTool(ctx context.Context, path string, query url.Values) (
 // doPOSTJSONTool is the POST sibling of doGETTool.
 func (s *server) doPOSTJSONTool(ctx context.Context, path string, body any) (*mcp.CallToolResult, any, error) {
 	respBody, err := s.doPOSTJSON(ctx, path, body)
+	if err != nil {
+		return toolError(err)
+	}
+	return nil, respBody, nil
+}
+
+// doPUTJSONTool is the PUT sibling of doPOSTJSONTool.
+func (s *server) doPUTJSONTool(ctx context.Context, path string, body any) (*mcp.CallToolResult, any, error) {
+	respBody, err := s.doJSONBody(ctx, http.MethodPut, path, body)
 	if err != nil {
 		return toolError(err)
 	}
@@ -435,6 +478,86 @@ func (s *server) listPortfolioNewListings(
 		q.Set("since", args.Since)
 	}
 	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/new-listings"), q)
+}
+
+// ---------- list_portfolio_integrations ----------
+
+type listPortfolioIntegrationsArgs struct {
+	Portfolio string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+}
+
+func (s *server) listPortfolioIntegrations(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	args listPortfolioIntegrationsArgs,
+) (*mcp.CallToolResult, any, error) {
+	if args.Portfolio == "" {
+		return toolError(errors.New("portfolio is required"))
+	}
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/integrations"), nil)
+}
+
+// ---------- get_portfolio_integration_secrets ----------
+
+type getPortfolioIntegrationSecretsArgs struct {
+	Portfolio   string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+	Integration string `json:"integration" jsonschema:"integration row id (recommended; from list_portfolio_integrations) OR a '<platform>:<purpose>' tuple, e.g. 'streamline:unit_source' or 'pricelabs:pricing'"`
+}
+
+func (s *server) getPortfolioIntegrationSecrets(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	args getPortfolioIntegrationSecretsArgs,
+) (*mcp.CallToolResult, any, error) {
+	if args.Portfolio == "" {
+		return toolError(errors.New("portfolio is required"))
+	}
+	if args.Integration == "" {
+		return toolError(errors.New("integration is required (numeric id or 'platform:purpose')"))
+	}
+	return s.doGETTool(
+		ctx,
+		portfolioPath(args.Portfolio, "/integrations/"+url.PathEscape(args.Integration)+"/secrets"),
+		nil,
+	)
+}
+
+// ---------- set_portfolio_integration_secrets ----------
+
+type setPortfolioIntegrationSecretsArgs struct {
+	Portfolio      string         `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+	Integration    string         `json:"integration" jsonschema:"integration row id (recommended; from list_portfolio_integrations) OR a '<platform>:<purpose>' tuple"`
+	Secrets        map[string]any `json:"secrets" jsonschema:"plaintext key/value secrets to store. DESTRUCTIVE: fully replaces any existing credentials for this integration row. Pass {} to clear."`
+	CredentialType string         `json:"credential_type,omitempty" jsonschema:"optional credential type label (e.g. 'api_key', 'access_token', 'client_credentials', 'pacer'). Empty clears the column."`
+	ExpiresAt      string         `json:"expires_at,omitempty" jsonschema:"optional RFC3339 expiry (e.g. OAuth refresh deadline). Empty clears the column."`
+}
+
+func (s *server) setPortfolioIntegrationSecrets(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	args setPortfolioIntegrationSecretsArgs,
+) (*mcp.CallToolResult, any, error) {
+	if args.Portfolio == "" {
+		return toolError(errors.New("portfolio is required"))
+	}
+	if args.Integration == "" {
+		return toolError(errors.New("integration is required (numeric id or 'platform:purpose')"))
+	}
+	if args.Secrets == nil {
+		return toolError(errors.New(`"secrets" object is required (pass {} to clear)`))
+	}
+	body := map[string]any{"secrets": args.Secrets}
+	if args.CredentialType != "" {
+		body["credential_type"] = args.CredentialType
+	}
+	if args.ExpiresAt != "" {
+		body["expires_at"] = args.ExpiresAt
+	}
+	return s.doPUTJSONTool(
+		ctx,
+		portfolioPath(args.Portfolio, "/integrations/"+url.PathEscape(args.Integration)+"/secrets"),
+		body,
+	)
 }
 
 // ---------- get_portfolio_pacing ----------
@@ -871,6 +994,120 @@ func registerTools(srv *mcp.Server, s *server) {
 			"ARGS: portfolio (required), since (optional YYYY-MM-DD; defaults to " +
 			"90 days ago).",
 	}, s.listPortfolioNewListings)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "list_portfolio_integrations",
+		Description: "Lists which PMS, RMS, channel manager, and other " +
+			"integration providers a portfolio is wired to in Pacer. Returns one " +
+			"row per portfolio_integrations record — the source of truth Pacer " +
+			"uses to know where to pull units, reservations, pricing, and OTA " +
+			"data from for this client.\n\n" +
+			"USE WHEN: user asks 'what PMS does <portfolio> use?', 'is this " +
+			"client on PriceLabs or Wheelhouse?', 'which integrations are " +
+			"enabled for X?', or before calling a platform-specific tool (e.g. " +
+			"guesty_pricing_config) and you need to confirm the portfolio is " +
+			"actually on Guesty.\n\n" +
+			"RESPONSE FIELDS (per row):\n" +
+			"  platform — the lowercase provider key (e.g. 'guesty', " +
+			"'streamline', 'pricelabs'). Stable identifier; use this when " +
+			"branching logic, not for display.\n" +
+			"  platform_name — human-readable brand name for the same value " +
+			"(e.g. 'Guesty', 'Streamline VRS', 'PriceLabs', 'Key Data', " +
+			"'iTrip', 'eviivo'). Use this when talking to the user.\n" +
+			"  purpose — lowercase role key. Common values: 'unit_source' " +
+			"(master unit list), 'reservation_source' (bookings feed), " +
+			"'pricing' (RMS), 'crm' (Attio), 'ota' (channel manager), " +
+			"'keydata_pms' (Key Data's view of the PMS), 'stay_rules' " +
+			"(min-stay management), 'performance_deck'.\n" +
+			"  purpose_name — human-readable label for the same value " +
+			"(e.g. 'Unit Source', 'Pricing (RMS)', 'Stay Rules (Min-Stay)').\n" +
+			"  external_id — the provider-side account/property identifier. " +
+			"Null/empty means this row exists for metadata only and won't " +
+			"actually sync (sync jobs filter on external_id IS NOT NULL).\n" +
+			"  credential_type — how auth works for this integration: " +
+			"'api_key', 'access_token', 'username_password', " +
+			"'client_credentials', or 'pacer' (no stored secret). Null when " +
+			"the integration doesn't need credentials.\n" +
+			"  has_secrets — true if encrypted credentials are stored for " +
+			"this row. The encrypted blob itself is NEVER returned by this " +
+			"tool; reading plaintext requires a separate, role-gated secrets " +
+			"tool.\n" +
+			"  expires_at — credential expiry timestamp (e.g. OAuth token " +
+			"refresh deadline). Null when not applicable.\n" +
+			"  enabled — false means the integration is configured but " +
+			"intentionally paused; sync jobs skip it.\n\n" +
+			"NOTE: A portfolio can have multiple PMS rows (e.g. one for unit " +
+			"sourcing, another for reservations) and can carry both a PMS and " +
+			"an RMS simultaneously. Group by purpose, not by platform, when " +
+			"answering 'which PMS?' vs 'which RMS?'.\n\n" +
+			"ARGS: portfolio (required, name partial-match or numeric ID).",
+	}, s.listPortfolioIntegrations)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "get_portfolio_integration_secrets",
+		Description: "Returns the DECRYPTED credentials (api_key, client_id, " +
+			"refresh_token, etc.) stored in Pacer for one portfolio_integrations " +
+			"row. Pacer holds these secrets encrypted at rest and decrypts them " +
+			"only for an authorized caller — typically so the user can rotate a " +
+			"key, hand a credential to a partner team, or so a follow-up tool " +
+			"call can use it.\n\n" +
+			"ACCESS CONTROL (enforced by core; the MCP tool just forwards the " +
+			"caller's auth):\n" +
+			"  - admin users: read for ANY portfolio.\n" +
+			"  - supervisors: read for any portfolio they are assigned to OR any " +
+			"portfolio assigned to a staff member they supervise.\n" +
+			"  - staff: read for any portfolio they are personally assigned to.\n" +
+			"  - everyone else: hard 403.\n" +
+			"Don't offer this tool to a user who isn't in one of those buckets " +
+			"— their call will be rejected.\n\n" +
+			"USE WHEN: user explicitly asks to see / rotate / hand off a PMS or " +
+			"RMS credential, OR a follow-up workflow needs the live secret. " +
+			"Don't fetch secrets speculatively.\n\n" +
+			"AUDIT: every successful read inserts a row in core.audit_log " +
+			"(action='READ_SECRETS'; secret VALUE is NOT logged) attributed to " +
+			"the caller's user id.\n\n" +
+			"RESPONSE: { portfolio, integration (same shape as " +
+			"list_portfolio_integrations rows), secrets (decoded JSON map; {} if " +
+			"none stored) }.\n\n" +
+			"ARGS:\n" +
+			"  portfolio — required, name partial-match or numeric ID.\n" +
+			"  integration — required. Prefer the numeric `id` from " +
+			"list_portfolio_integrations. Or pass a '<platform>:<purpose>' " +
+			"tuple, e.g. 'streamline:unit_source', 'pricelabs:pricing'.",
+	}, s.getPortfolioIntegrationSecrets)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "set_portfolio_integration_secrets",
+		Description: "DESTRUCTIVE. Overwrites the encrypted credentials stored " +
+			"in Pacer for one portfolio_integrations row. The `secrets` object " +
+			"replaces any existing value — there is no partial merge — and prior " +
+			"credentials are NOT retained for rollback. Pacer encrypts at rest " +
+			"on write.\n\n" +
+			"ACCESS CONTROL (enforced by core; the MCP tool just forwards the " +
+			"caller's auth):\n" +
+			"  - admin users: write for ANY portfolio.\n" +
+			"  - supervisors: write for any portfolio they are assigned to OR " +
+			"any portfolio assigned to a staff member they supervise.\n" +
+			"  - staff: write for any portfolio they are personally assigned to.\n" +
+			"  - everyone else: hard 403.\n" +
+			"Don't offer this tool to a user who isn't in one of those buckets.\n\n" +
+			"USE WHEN: user explicitly asks to rotate, install, or clear a PMS / " +
+			"RMS credential for a specific portfolio. Always confirm the target " +
+			"portfolio and integration with the user before calling — this can't " +
+			"be undone from the agent surface.\n\n" +
+			"AUDIT: the write runs under the standard portfolio_integrations " +
+			"audit trigger, which captures the caller's user id along with the " +
+			"before/after row state in core.audit_log.\n\n" +
+			"ARGS:\n" +
+			"  portfolio — required, name partial-match or numeric ID.\n" +
+			"  integration — required. Numeric row `id` (preferred; from " +
+			"list_portfolio_integrations) OR '<platform>:<purpose>' tuple.\n" +
+			"  secrets — required map. Pass {} to clear all stored secrets for " +
+			"this integration.\n" +
+			"  credential_type — optional label (e.g. 'api_key', 'access_token', " +
+			"'client_credentials', 'pacer'); empty clears.\n" +
+			"  expires_at — optional RFC3339 expiry; empty clears.",
+	}, s.setPortfolioIntegrationSecrets)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "get_portfolio_pacing",
