@@ -31,6 +31,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # goreleaser handles build + archive + docker push + checksums; the
+      # GitHub release itself is disabled in .goreleaser.yaml because the
+      # @v6 action's upload path 401s mid-flight on this private repo.
       - uses: goreleaser/goreleaser-action@v6
         with:
           args: release --clean
@@ -47,13 +50,21 @@ jobs:
           VERSION=${TAG#v}
           scripts/build-mcpb.sh "$VERSION"
 
-      - name: Attach MCPB bundle to release
+      - name: Create GitHub release with all artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           VERSION=${TAG#v}
-          gh release upload "$TAG" "dist/pacer-mcp-${VERSION}.mcpb" --clobber
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            dist/pacer-mcp_${VERSION}_darwin_arm64.tar.gz \
+            dist/pacer-mcp_${VERSION}_linux_amd64.tar.gz \
+            dist/pacer-mcp_${VERSION}_linux_arm64.tar.gz \
+            dist/pacer-mcp_${VERSION}_windows_amd64.zip \
+            dist/checksums.txt \
+            "dist/pacer-mcp-${VERSION}.mcpb"
 
   publish-mcp-registry:
     needs: build

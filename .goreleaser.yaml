@@ -48,4 +48,11 @@ dockers_v2:
       "org.opencontainers.image.licenses": "MIT"
 
 release:
-  draft: false
+  # goreleaser-action @v6 (goreleaser 2.16.0) reliably 401s mid-upload on this
+  # private repo: it creates the release at an `untagged-*` URL because the
+  # tag/release association doesn't propagate before the upload calls, then
+  # every asset upload to the floating release-id gets rejected. Skip
+  # goreleaser's GitHub release entirely and let the workflow create +
+  # populate it via `gh release create`, which the MCPB bundle step already
+  # does successfully.
+  disable: true
