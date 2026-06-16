@@ -693,6 +693,66 @@ func (s *server) guestyReservationPromotions(
 	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/reservation-promotions"), q)
 }
 
+// ---------- get_pricelabs_notes ----------
+
+type getPriceLabsNotesArgs struct {
+	Portfolio string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+}
+
+func (s *server) getPriceLabsNotes(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	args getPriceLabsNotesArgs,
+) (*mcp.CallToolResult, any, error) {
+	if args.Portfolio == "" {
+		return toolError(errors.New("portfolio is required"))
+	}
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/pricelabs/notes"), nil)
+}
+
+// ---------- get_pricelabs_tags ----------
+
+type getPriceLabsTagsArgs struct {
+	Portfolio string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+}
+
+func (s *server) getPriceLabsTags(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	args getPriceLabsTagsArgs,
+) (*mcp.CallToolResult, any, error) {
+	if args.Portfolio == "" {
+		return toolError(errors.New("portfolio is required"))
+	}
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/pricelabs/tags"), nil)
+}
+
+// ---------- get_pricelabs_overrides ----------
+
+type getPriceLabsOverridesArgs struct {
+	Portfolio string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+	From      string `json:"from,omitempty" jsonschema:"inclusive lower bound on override_date, YYYY-MM-DD. Omit for no lower bound."`
+	To        string `json:"to,omitempty" jsonschema:"inclusive upper bound on override_date, YYYY-MM-DD. Omit for no upper bound."`
+}
+
+func (s *server) getPriceLabsOverrides(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	args getPriceLabsOverridesArgs,
+) (*mcp.CallToolResult, any, error) {
+	if args.Portfolio == "" {
+		return toolError(errors.New("portfolio is required"))
+	}
+	q := url.Values{}
+	if args.From != "" {
+		q.Set("from", args.From)
+	}
+	if args.To != "" {
+		q.Set("to", args.To)
+	}
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/pricelabs/overrides"), q)
+}
+
 // ---------- get_client_health_brief ----------
 
 type getClientHealthBriefArgs struct {
@@ -1205,6 +1265,93 @@ func registerTools(srv *mcp.Server, s *server) {
 			"ARGS: portfolio (required), month OR start+end (one is required), " +
 			"date_type (optional), flat (optional bool).",
 	}, s.guestyReservationPromotions)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "get_pricelabs_notes",
+		Description: "PriceLabs-native per-listing free-text notes for a portfolio. " +
+			"These are the notes a revenue manager types directly into the PriceLabs " +
+			"UI on each listing — owner preferences, override reasons, ops " +
+			"reminders, anything PriceLabs-local. They do NOT flow through the PMS " +
+			"or KeyData sync path, so this is the only way to surface them in " +
+			"Pacer.\n\n" +
+			"USE WHEN: 'what's PriceLabs saying about this unit?', 'did the RM " +
+			"leave any notes on the listing?', 'why is this unit's pricing set " +
+			"the way it is?'.\n\n" +
+			"DATA FRESHNESS: refreshed nightly by the mirror-pricelabs job. The " +
+			"fetched_at timestamp on each row tells you the last successful pull. " +
+			"Listings with empty or missing notes are filtered out server-side — " +
+			"only rows with actual content come back.\n\n" +
+			"RESPONSE FIELDS:\n" +
+			"  listing_id — PriceLabs's own listing ID\n" +
+			"  unit_id    — Pacer unit row this maps to (null if PriceLabs has a " +
+			"listing we couldn't resolve to a unit)\n" +
+			"  pms        — PriceLabs's pms taxonomy tag (airbnb, rentalsunited, …)\n" +
+			"  name       — listing name as PriceLabs sees it\n" +
+			"  note       — the free-text content (always non-empty in this response)\n" +
+			"  fetched_at — last sync time\n\n" +
+			"ARG: portfolio = name (partial match) or numeric ID.",
+	}, s.getPriceLabsNotes)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "get_pricelabs_tags",
+		Description: "PriceLabs-native per-listing tags + group/subgroup labels for " +
+			"a portfolio. Tags here are scoped to those applied inside PriceLabs " +
+			"(source='pricelabs') — they do NOT include KeyData-sourced unit tags " +
+			"or anything tagged in the PMS.\n\n" +
+			"USE WHEN: 'how is this portfolio segmented in PriceLabs?', 'which " +
+			"listings are in the Beachfront group?', 'show me everything tagged " +
+			"`premium` by the RM in PriceLabs'. For Pacer-side or KeyData-side " +
+			"tagging, use list_portfolio_units.\n\n" +
+			"GROUPING: PriceLabs supports a two-level hierarchy (group → subgroup). " +
+			"Both labels are denormalized onto each listing row so you don't need " +
+			"to join. group/subgroup are optional and may be absent.\n\n" +
+			"RESPONSE FIELDS (one row per listing):\n" +
+			"  listing_id — PriceLabs's listing ID\n" +
+			"  unit_id    — Pacer unit (null if unresolved)\n" +
+			"  pms        — PriceLabs pms taxonomy tag\n" +
+			"  name       — listing name in PriceLabs\n" +
+			"  group      — top-level PriceLabs group label, if any\n" +
+			"  subgroup   — second-level label under group, if any\n" +
+			"  tags       — array of tag names; always present, empty array " +
+			"when the listing has no PriceLabs tags\n" +
+			"  fetched_at — last sync time\n\n" +
+			"ARG: portfolio = name (partial match) or numeric ID.",
+	}, s.getPriceLabsTags)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "get_pricelabs_overrides",
+		Description: "PriceLabs per-(listing, date) overrides for a portfolio: the " +
+			"date-specific price / min-price / max-price / min-stay / check-in / " +
+			"check-out rules an RM has pinned inside PriceLabs. These are PriceLabs's " +
+			"own override table — separate from the floor-rate min-price overrides " +
+			"Pacer pushes (those live in the rates flow).\n\n" +
+			"USE WHEN: 'what overrides has the RM set in PriceLabs for next month?', " +
+			"'why is July 4 priced the way it is?', 'list every PriceLabs date " +
+			"override on this portfolio in Q3'.\n\n" +
+			"FILTER WINDOW: pass from=YYYY-MM-DD and/or to=YYYY-MM-DD to bound the " +
+			"override_date inclusively. Either may be omitted. With no bounds you " +
+			"get every mirrored override for the portfolio.\n\n" +
+			"RESPONSE FIELDS (one row per (listing, date) override):\n" +
+			"  listing_id, unit_id, pms, date — identifiers + the override's date\n" +
+			"  price, price_type — absolute (fixed) or relative (percent) price " +
+			"override; both null if the override doesn't touch price\n" +
+			"  min_price, min_price_type — fixed | percent_base | percent_min\n" +
+			"  max_price, max_price_type — fixed | percent_base | percent_max\n" +
+			"  min_stay — minimum nights forced on this date\n" +
+			"  check_in_check_out_enabled, check_in, check_out — when enabled, " +
+			"check_in/check_out are 7-character weekday bitmaps (Mon–Sun); '1' = " +
+			"allowed on that weekday, '0' = blocked. Example: '1000100' allows " +
+			"Mon and Fri.\n" +
+			"  reason   — the free-text reason the RM typed into PriceLabs's UI\n" +
+			"  currency — override currency, may differ from listing default\n" +
+			"  pl_created_at / pl_updated_at — PriceLabs-side timestamps, useful " +
+			"for 'what changed in PriceLabs since X?' audits\n" +
+			"  fetched_at — last sync time on our side\n\n" +
+			"DATA FRESHNESS: refreshed nightly. An override set in PriceLabs today " +
+			"may not appear until tomorrow's sync.\n\n" +
+			"ARGS: portfolio (required), from (optional YYYY-MM-DD), to (optional " +
+			"YYYY-MM-DD).",
+	}, s.getPriceLabsOverrides)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "get_client_health_brief",
