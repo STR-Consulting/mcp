@@ -560,6 +560,55 @@ func (s *server) setPortfolioIntegrationSecrets(
 	)
 }
 
+// ---------- create_portfolio_integration ----------
+
+type createPortfolioIntegrationArgs struct {
+	Portfolio      string         `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+	Platform       string         `json:"platform" jsonschema:"platform key, e.g. 'guesty', 'hostaway', 'streamline', 'pricelabs', 'attio', 'keydata'"`
+	Purpose        string         `json:"purpose" jsonschema:"what this connection is for: 'reservation_source', 'unit_source', 'pricing', 'crm', 'listing', 'reporting', 'stay_rules', 'sheet_export', etc. Controls which sync jobs act on the integration."`
+	CredentialType string         `json:"credential_type,omitempty" jsonschema:"how auth works: 'client_credentials' (OAuth client id+secret), 'api_key', 'access_token', 'token_pair', 'username_password', or 'pacer'. Omit if unknown."`
+	ExternalID     string         `json:"external_id,omitempty" jsonschema:"the portfolio's ID in the external platform, if known"`
+	Secrets        map[string]any `json:"secrets,omitempty" jsonschema:"plaintext key/value credentials to store on create (e.g. {\"client_id\":\"...\",\"client_secret\":\"...\"}). Encrypted at rest. Omit to create the row without credentials."`
+	ExpiresAt      string         `json:"expires_at,omitempty" jsonschema:"optional RFC3339 credential expiry"`
+	Enabled        *bool          `json:"enabled,omitempty" jsonschema:"whether sync jobs should act on this integration. Defaults to true. Pass false to stage a row without disturbing an existing enabled integration that owns the same purpose."`
+}
+
+func (s *server) createPortfolioIntegration(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	args createPortfolioIntegrationArgs,
+) (*mcp.CallToolResult, any, error) {
+	if args.Portfolio == "" {
+		return toolError(errors.New("portfolio is required"))
+	}
+	if args.Platform == "" {
+		return toolError(errors.New("platform is required"))
+	}
+	if args.Purpose == "" {
+		return toolError(errors.New("purpose is required"))
+	}
+	body := map[string]any{
+		"platform": args.Platform,
+		"purpose":  args.Purpose,
+	}
+	if args.CredentialType != "" {
+		body["credential_type"] = args.CredentialType
+	}
+	if args.ExternalID != "" {
+		body["external_id"] = args.ExternalID
+	}
+	if args.Secrets != nil {
+		body["secrets"] = args.Secrets
+	}
+	if args.ExpiresAt != "" {
+		body["expires_at"] = args.ExpiresAt
+	}
+	if args.Enabled != nil {
+		body["enabled"] = *args.Enabled
+	}
+	return s.doPOSTJSONTool(ctx, portfolioPath(args.Portfolio, "/integrations"), body)
+}
+
 // ---------- get_portfolio_pacing ----------
 
 type getPortfolioPacingArgs struct {
@@ -1168,6 +1217,46 @@ func registerTools(srv *mcp.Server, s *server) {
 			"'client_credentials', 'pacer'); empty clears.\n" +
 			"  expires_at — optional RFC3339 expiry; empty clears.",
 	}, s.setPortfolioIntegrationSecrets)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "create_portfolio_integration",
+		Description: "Wires a portfolio to a new platform connection it doesn't " +
+			"have yet — the safe way to onboard a PMS, RMS, channel manager, or " +
+			"CRM when list_portfolio_integrations shows no row for it. Creates the " +
+			"row AND stores its credentials in a single encrypted, audited write. " +
+			"Use set_portfolio_integration_secrets instead when the row already " +
+			"exists; this tool is only for first-time creation.\n\n" +
+			"WHY THIS EXISTS: set_portfolio_integration_secrets can only overwrite " +
+			"an EXISTING integration row. If a client (say) just handed over Guesty " +
+			"client-credentials but the portfolio has no Guesty row, there was " +
+			"nowhere to put them — this tool creates that row with the right " +
+			"purpose in one step.\n\n" +
+			"SAFETY — `purpose` decides which sync jobs act on the integration, so " +
+			"core rejects two classes of mistake:\n" +
+			"  - an exact platform+purpose row already existing (use the secrets " +
+			"tool to update it) → 409.\n" +
+			"  - another ENABLED integration already owning that purpose (e.g. " +
+			"KeyData already owns unit_source/reservation_source on the portfolio) " +
+			"→ 409. Pass enabled=false to stage the new row without disturbing the " +
+			"incumbent, then hand the cutover to an admin.\n\n" +
+			"ACCESS CONTROL (enforced by core; the tool forwards the caller's " +
+			"auth): admin any portfolio; supervisors/staff only portfolios they're " +
+			"assigned to; everyone else 403.\n\n" +
+			"USE WHEN: user asks to set up / connect / onboard a brand-new PMS or " +
+			"RMS for a portfolio that doesn't have it yet. Confirm the portfolio, " +
+			"platform, and purpose before calling.\n\n" +
+			"ARGS:\n" +
+			"  portfolio — required, name partial-match or numeric ID.\n" +
+			"  platform — required, e.g. 'guesty', 'hostaway', 'pricelabs'.\n" +
+			"  purpose — required, e.g. 'reservation_source', 'unit_source', " +
+			"'pricing', 'crm'.\n" +
+			"  credential_type — optional, e.g. 'client_credentials', 'api_key'.\n" +
+			"  external_id — optional, the portfolio's ID in the external platform.\n" +
+			"  secrets — optional credential map stored on create (e.g. " +
+			"{\"client_id\":\"…\",\"client_secret\":\"…\"}).\n" +
+			"  expires_at — optional RFC3339 credential expiry.\n" +
+			"  enabled — optional, defaults true; false stages a dormant row.",
+	}, s.createPortfolioIntegration)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "get_portfolio_pacing",

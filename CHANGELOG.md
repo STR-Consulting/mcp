@@ -1,5 +1,11 @@
 # Changelog
 
+## Week of Jun 14 – Jun 20, 2026
+
+### ✨ Features
+
+- Add `create_portfolio_integration` MCP tool wrapping the new core `POST /api/v1/portfolios/{portfolio}/integrations` endpoint. Onboards a portfolio to a PMS/RMS/channel manager it has no row for yet — the gap that previously left handed-over client credentials with nowhere to land. Creates the integration row plus optional encrypted secrets in a single audited write, and refuses two classes of mistake: an exact `platform:purpose` duplicate, and a `purpose` already owned by another enabled integration (pass `enabled=false` to stage a dormant row past the latter). Access gating (admin / portfolio-assigned staff / their supervisor) is enforced in core; the wrapper forwards the caller's PAT (jig 7fo-u6d).
+
 ## Week of Jun 7 – Jun 13, 2026
 
 ### ✨ Features
