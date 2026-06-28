@@ -402,6 +402,35 @@ func (s *server) getPortfolioTeam(
 	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/team"), nil)
 }
 
+// ---------- get_portfolio_billed_units ----------
+
+type getPortfolioBilledUnitsArgs struct {
+	Portfolio string `json:"portfolio" jsonschema:"portfolio name (partial match) or numeric ID"`
+}
+
+func (s *server) getPortfolioBilledUnits(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	args getPortfolioBilledUnitsArgs,
+) (*mcp.CallToolResult, any, error) {
+	if args.Portfolio == "" {
+		return toolError(errors.New("portfolio is required"))
+	}
+	return s.doGETTool(ctx, portfolioPath(args.Portfolio, "/billed-units"), nil)
+}
+
+// ---------- get_billed_units_by_rm ----------
+
+type getBilledUnitsByRMArgs struct{}
+
+func (s *server) getBilledUnitsByRM(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	_ getBilledUnitsByRMArgs,
+) (*mcp.CallToolResult, any, error) {
+	return s.doGETTool(ctx, "/api/v1/billed-units/by-rm", nil)
+}
+
 // ---------- list_portfolio_units ----------
 
 type listPortfolioUnitsArgs struct {
@@ -1032,6 +1061,35 @@ func registerTools(srv *mcp.Server, s *server) {
 			"who owns an account.\n\n" +
 			"ARG: portfolio = name (partial match) or numeric ID.",
 	}, s.getPortfolioTeam)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "get_portfolio_billed_units",
+		Description: "Return the AUTHORITATIVE active billed-unit count for one " +
+			"portfolio — the count Pacer actually invoices, sourced from the most " +
+			"recent Bill.com invoice (the per-unit 'Active/Ongoing' line). This is the " +
+			"number that matches the billing sheets. It is NOT the operational " +
+			"managed/active unit roster (use list_portfolio_units for that), which " +
+			"diverges from billing in both directions.\n\n" +
+			"USE WHEN: 'how many units are we billing X for?', 'active billed units', " +
+			"reconciling against a billing sheet.\n\n" +
+			"Returns billed_units, the invoice month, and invoice_amount. " +
+			"billed_units is null when no Bill.com history is mapped, and 0 (with a " +
+			"note) for revenue-share contracts where quantity isn't a unit count.\n\n" +
+			"ARG: portfolio = name (partial match) or numeric ID.",
+	}, s.getPortfolioBilledUnits)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "get_billed_units_by_rm",
+		Description: "Org-wide rollup of authoritative active billed units (from " +
+			"Bill.com) grouped by each portfolio's primary RM, so 'units per RM' is a " +
+			"single call. Each RM entry carries their RD, summed billed_units, " +
+			"portfolio_count, and a per-portfolio breakdown; books are ordered " +
+			"largest-first. Portfolios with no assigned RM appear in an 'unassigned' " +
+			"bucket, and total_billed_units is the book-wide sum.\n\n" +
+			"USE WHEN: 'how many units does each RM oversee?', 'units per RM', " +
+			"'who has the biggest book?'. Counts reflect billing, not the operational " +
+			"roster. No arguments.",
+	}, s.getBilledUnitsByRM)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "list_portfolio_units",

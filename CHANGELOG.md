@@ -1,5 +1,11 @@
 # Changelog
 
+## Week of Jun 21 – Jun 27, 2026
+
+### ✨ Features
+
+- Add `get_portfolio_billed_units` and `get_billed_units_by_rm` MCP tools wrapping the new core `GET /api/v1/portfolios/{portfolio}/billed-units` and `GET /api/v1/billed-units/by-rm` endpoints. Expose the **authoritative** active billed-unit count — the number Pacer actually invoices, sourced from the most recent Bill.com 'Active/Ongoing' per-unit invoice line (`analytics.billing_actuals`), which matches the billing sheets. The operational `managed_unit_count` diverged from billing in both directions, so RMs had no one-call answer for "how many units do we bill this portfolio / this RM for"; the per-RM variant rolls each active portfolio up to its primary RM (with RD and per-portfolio breakdown) so "units per RM" is a single call. Revenue-share contracts read `billed_units=0` with a note; unmapped portfolios read null (jig ao7-wnr).
+
 ## Week of Jun 14 – Jun 20, 2026
 
 ### ✨ Features
