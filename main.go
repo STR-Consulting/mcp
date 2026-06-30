@@ -431,6 +431,18 @@ func (s *server) getBilledUnitsByRM(
 	return s.doGETTool(ctx, "/api/v1/billed-units/by-rm", nil)
 }
 
+// ---------- get_managed_units_by_rm ----------
+
+type getManagedUnitsByRMArgs struct{}
+
+func (s *server) getManagedUnitsByRM(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	_ getManagedUnitsByRMArgs,
+) (*mcp.CallToolResult, any, error) {
+	return s.doGETTool(ctx, "/api/v1/managed-units/by-rm", nil)
+}
+
 // ---------- list_portfolio_units ----------
 
 type listPortfolioUnitsArgs struct {
@@ -1090,6 +1102,26 @@ func registerTools(srv *mcp.Server, s *server) {
 			"'who has the biggest book?'. Counts reflect billing, not the operational " +
 			"roster. No arguments.",
 	}, s.getBilledUnitsByRM)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "get_managed_units_by_rm",
+		Description: "Org-wide rollup of live MANAGED units — the active " +
+			"operational roster Portal displays (units that are is_active AND " +
+			"is_managed, read live from the core DB) — grouped by each portfolio's " +
+			"primary RM, so 'managed units per RM' is a single call. Each RM entry " +
+			"carries their RD, summed managed_units, portfolio_count, and a " +
+			"per-portfolio breakdown; books are ordered largest-first. Portfolios " +
+			"with no assigned RM appear in an 'unassigned' bucket, and " +
+			"total_managed_units is the book-wide sum.\n\n" +
+			"USE WHEN: 'how many units does each RM manage?', 'managed units per " +
+			"RM', 'who has the biggest operational book?'. This is the OPERATIONAL " +
+			"roster, not billing — for invoiced counts use get_billed_units_by_rm.\n\n" +
+			"CAVEAT: this is the operational roster, which reconciles to a larger " +
+			"number than the true managed book — it includes is_managed drift and " +
+			"misses unit-less rev-share portfolios. Treat it as the operational " +
+			"roster reconciling to the real book, not a definitive 'units under " +
+			"management' headcount. No arguments.",
+	}, s.getManagedUnitsByRM)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "list_portfolio_units",

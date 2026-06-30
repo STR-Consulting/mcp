@@ -1,5 +1,11 @@
 # Changelog
 
+## Week of Jun 28 – Jul 4, 2026
+
+### ✨ Features
+
+- Add `get_managed_units_by_rm` MCP tool wrapping the core `GET /api/v1/managed-units/by-rm` endpoint, the operational-roster sibling to `get_billed_units_by_rm`. Rolls every active portfolio's live managed-unit count (units that are active AND managed, read straight from the core DB) up to its primary RM, with RD and per-portfolio breakdown, so "managed units per RM" is a single call. This is the operational roster the portal displays — distinct from billing — and reconciles to a larger number than the true managed book (it carries managed-status drift and misses unit-less revenue-share portfolios), so it's an operational headcount, not a definitive "units under management" figure (jig jyk-rir).
+
 ## Week of Jun 21 – Jun 27, 2026
 
 ### ✨ Features

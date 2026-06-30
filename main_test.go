@@ -68,6 +68,7 @@ func TestRegisterTools_ExpectedTools(t *testing.T) {
 		"get_portfolio_team",
 		"get_portfolio_billed_units",
 		"get_billed_units_by_rm",
+		"get_managed_units_by_rm",
 		"list_portfolio_units",
 		"list_portfolio_reservations",
 		"list_portfolio_new_listings",
