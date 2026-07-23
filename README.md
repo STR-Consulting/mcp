@@ -1,5 +1,16 @@
 # pacer-mcp
 
+> **🪦 RETIRED.** This standalone PAT-over-stdio server no longer reaches the
+> Pacer API. Every tool returns a notice to switch to the **in-process
+> ("inline") Pacer MCP connector** built into core, offered as the hosted
+> **"Pacer"** connector on claude.ai / Claude Cowork (tools appear as
+> `mcp__…Pacer__…`). The standalone binary called the API over the network at
+> `portal.pacerrev.io`, which now redirects unauthenticated API calls to an HTML
+> login page; the in-process connector dispatches to the same `/api/v1` handlers
+> with no network hop and can't drift from the API host. **Remove this server
+> from your MCP client config.** The setup and tool docs below are kept for
+> historical reference only.
+
 An MCP server that exposes [pacer/core](https://github.com/pacer/core) API endpoints as native tools for Claude Code (and any other MCP-aware client). One binary, stdio transport, no fuss.
 
 ## Install

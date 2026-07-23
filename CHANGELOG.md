@@ -1,5 +1,11 @@
 # Changelog
 
+## Week of Jul 19 – Jul 25, 2026
+
+### 🪦 Retired
+
+- **This standalone server is retired.** Every tool now returns a notice to switch to the in-process ("inline") Pacer MCP connector built into core, offered as the hosted "Pacer" connector on claude.ai / Claude Cowork. The standalone binary reached the API over the network at `portal.pacerrev.io`, which now 303-redirects unauthenticated API calls to an HTML login page — the source of the `invalid character '<'` failures that broke the integration/cred-management tools. The in-process connector dispatches to the same `/api/v1` handlers with no network hop, so it can't drift from the API host. Remove this server from your MCP client config (jig 6dq-315).
+
 ## Week of Jun 28 – Jul 4, 2026
 
 ### ✨ Features
